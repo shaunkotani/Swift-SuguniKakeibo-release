@@ -16,6 +16,7 @@ struct SettingView: View {
     @State private var showingCategoryManagement = false
     @State private var showingResetCategoriesAlert = false
     @State private var showingResetSettingsAlert = false
+    @FocusState private var isCurrencyFocused: Bool
     
     var body: some View {
         NavigationStack {
@@ -34,6 +35,7 @@ struct SettingView: View {
                 
                 Section(header: Text("通貨設定")) {
                     TextField("通貨単位", text: $currency)
+                        .focused($isCurrencyFocused)
                 }
                 
                 // カテゴリ管理セクション
@@ -56,6 +58,7 @@ struct SettingView: View {
                                 .foregroundColor(.gray)
                                 .font(.caption)
                         }
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(PlainButtonStyle())
                     
@@ -75,6 +78,7 @@ struct SettingView: View {
                             }
                             Spacer()
                         }
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -97,6 +101,7 @@ struct SettingView: View {
                                 .foregroundColor(.gray)
                                 .font(.caption)
                         }
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -141,6 +146,17 @@ struct SettingView: View {
                 #endif
             }
             .navigationTitle("設定")
+            .toolbar {
+                // キーボード用ツールバーを追加
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("完了") {
+                        isCurrencyFocused = false
+                    }
+                    .foregroundColor(.blue)
+                    .fontWeight(.semibold)
+                }
+            }
             .sheet(isPresented: $showingExportView) {
                 CSVExportView()
                     .environmentObject(viewModel)
@@ -164,6 +180,12 @@ struct SettingView: View {
                 Button("キャンセル", role: .cancel) { }
             } message: {
                 Text("アプリの設定を初期状態に戻します。\nカテゴリや支出データは変更されません。")
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isCurrencyFocused {
+                isCurrencyFocused = false
             }
         }
     }
