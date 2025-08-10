@@ -182,17 +182,17 @@ struct InputView: View {
                                 }
                                 .font(.caption)
                                 .foregroundColor(.blue)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
                                 .background(Color.blue.opacity(0.1))
-                                .cornerRadius(8)
+                                .cornerRadius(6)
                             }
-                            
                             Spacer()
                         }
+                        .frame(minWidth: 200)   // 最小幅
+                    } else {
+                        Spacer()
                     }
-                    
-                    Spacer()
                     
                     Button("完了") {
                         hideKeyboard()
@@ -231,18 +231,24 @@ struct InputView: View {
             )
             // 修正: 背景タップでキーボードを閉じる
             .contentShape(Rectangle())
-            // 修正案：onTapGestureの順序を活用
-            .onTapGesture(count: 2) {
-                // ダブルタップ処理
-                guard !isAmountFocused else { return }
-                focusAmountFieldForManualTap()
-            }
-            .onTapGesture(count: 1) {
-                // シングルタップ処理（ダブルタップの後に実行される）
-                if isAmountFocused || isNoteFocused {
-                    hideKeyboard()
-                }
-            }
+            .simultaneousGesture(
+                // シングルタップ：キーボードを閉じる（フィールドにフォーカス中のみ）
+                TapGesture(count: 1)
+                    .onEnded { _ in
+                        if isAmountFocused || isNoteFocused {
+                            hideKeyboard()
+                        }
+                    }
+            )
+            .simultaneousGesture(
+                // ダブルタップ：金額フィールドにフォーカス
+                TapGesture(count: 2)
+                    .onEnded { _ in
+                        if !isAmountFocused {
+                            focusAmountFieldForManualTap()
+                        }
+                    }
+            )
             .onAppear {
                 setupInitialCategory()
                 showDoubleTapHintIfNeeded()
@@ -651,9 +657,7 @@ struct SaveButtonView: View {
     var body: some View {
         VStack(spacing: 0) {
             Button(action: {
-                if isButtonEnabled {
-                    action()
-                }
+                action()
             }) {
                 HStack(spacing: 8) {
                     if isProcessing {
@@ -685,14 +689,12 @@ struct SaveButtonView: View {
                 )
                 .cornerRadius(12)
                 .shadow(color: isButtonEnabled ? Color.blue.opacity(0.3) : Color.clear, radius: 4, x: 0, y: 2)
+                .contentShape(Rectangle())
             }
             .disabled(!isButtonEnabled || isProcessing)
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.plain)
             .scaleEffect(isProcessing ? 0.95 : 1.0)
             .animation(.easeInOut(duration: 0.2), value: isProcessing)
-            .onTapGesture(count: 2) {
-                doubleTapAction()
-            }
             
             // ヒントテキスト
             if !isButtonEnabled && !isProcessing {

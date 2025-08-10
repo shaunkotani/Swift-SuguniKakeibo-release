@@ -15,10 +15,50 @@ struct ExpensesView: View {
             return expenses
         } else {
             return expenses.filter { expense in
-                expense.note.localizedCaseInsensitiveContains(searchText) ||
-                viewModel.categories.first(where: { $0.id == expense.categoryId })?.name.localizedCaseInsensitiveContains(searchText) == true
+                // 検索条件
+                let matchesNote = expense.note.localizedCaseInsensitiveContains(searchText)
+                let matchesCategory = viewModel.categories.first(where: { $0.id == expense.categoryId })?.name.localizedCaseInsensitiveContains(searchText) == true
+                let matchesAmount = matchesAmountSearch(expense: expense, searchText: searchText)
+                
+                return matchesNote || matchesCategory || matchesAmount
             }
         }
+    }
+    
+    // 金額検索のマッチング関数
+    private func matchesAmountSearch(expense: Expense, searchText: String) -> Bool {
+        let cleanSearchText = searchText.replacingOccurrences(of: "[^0-9.]", with: "", options: .regularExpression)
+        
+        // 空の場合や数値でない場合はfalse
+        guard !cleanSearchText.isEmpty, let searchAmount = Double(cleanSearchText) else {
+            // 円記号やカンマ付きの場合の処理
+            let currencyRemovedText = searchText
+                .replacingOccurrences(of: "¥", with: "")
+                .replacingOccurrences(of: "円", with: "")
+                .replacingOccurrences(of: ",", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            if let searchAmount = Double(currencyRemovedText) {
+                return matchesAmountValue(expense.amount, searchAmount: searchAmount)
+            }
+            return false
+        }
+        
+        return matchesAmountValue(expense.amount, searchAmount: searchAmount)
+    }
+    
+    // 金額マッチングのロジック
+    private func matchesAmountValue(_ expenseAmount: Double, searchAmount: Double) -> Bool {
+        // 完全一致
+        if expenseAmount == searchAmount {
+            return true
+        }
+        
+        // 文字列として部分一致（例：「500」で「1500」にマッチ）
+        let expenseAmountString = String(format: "%.0f", expenseAmount)
+        let searchAmountString = String(format: "%.0f", searchAmount)
+        
+        return expenseAmountString.contains(searchAmountString)
     }
     
     private var totalAmount: Double {
@@ -30,6 +70,22 @@ struct ExpensesView: View {
         return count == 1 ? "1件の支出" : "\(count)件の支出"
     }
 
+    // 検索ヒントテキストを簡素化
+    private var searchPrompt: String {
+        return "メモ、カテゴリ、金額で検索"
+    }
+    
+    // 数値検索かどうかを判定
+    private func isNumericSearch(_ text: String) -> Bool {
+        let cleanText = text
+            .replacingOccurrences(of: "¥", with: "")
+            .replacingOccurrences(of: "円", with: "")
+            .replacingOccurrences(of: ",", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        return Double(cleanText) != nil
+    }
+    
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -50,12 +106,28 @@ struct ExpensesView: View {
                     .accessibilityHint("支出の概要情報")
                 }
                 
+                // 検索ヒント表示（検索中のみ）
+                if !searchText.isEmpty {
+                    SearchHintView(
+                        searchText: searchText,
+                        isNumericSearch: isNumericSearch(searchText),
+                        resultCount: filteredExpenses.count
+                    )
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+                }
+                
                 List {
                     ForEach(filteredExpenses) { expense in
                         Button(action: {
                             selectedExpenseId = expense.id
                         }) {
-                            ExpenseRowView(expense: expense, viewModel: viewModel)
+                            ExpenseRowView(
+                                expense: expense,
+                                viewModel: viewModel,
+                                searchText: searchText,
+                                highlightAmount: isNumericSearch(searchText)
+                            )
                         }
                         .buttonStyle(PlainButtonStyle())
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
@@ -76,10 +148,13 @@ struct ExpensesView: View {
                 .accessibilityLabel("支出履歴一覧")
                 .overlay {
                     if filteredExpenses.isEmpty && !searchText.isEmpty {
-                        SearchEmptyStateView(searchText: searchText)
-                            .accessibilityElement(children: .combine)
-                            .accessibilityLabel("検索結果なし。\(searchText)に一致する支出が見つかりません")
-                            .accessibilityHint("別のキーワードで検索してください")
+                        SearchEmptyStateView(
+                            searchText: searchText,
+                            isNumericSearch: isNumericSearch(searchText)
+                        )
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("検索結果なし。\(searchText)に一致する支出が見つかりません")
+                        .accessibilityHint("別のキーワードで検索してください")
                     } else if viewModel.expenses.isEmpty {
                         GeneralEmptyStateView()
                             .accessibilityElement(children: .combine)
@@ -90,7 +165,7 @@ struct ExpensesView: View {
             }
             .navigationTitle("支出履歴")
             .navigationBarTitleDisplayMode(.automatic)
-            .searchable(text: $searchText, prompt: "メモやカテゴリで検索")
+            .searchable(text: $searchText, prompt: searchPrompt)
             .accessibilityAction(.escape) {
                 // VoiceOverでエスケープアクションを提供
                 if !searchText.isEmpty {
@@ -174,6 +249,36 @@ struct ExpensesView: View {
     }
 }
 
+// 検索ヒントビュー
+struct SearchHintView: View {
+    let searchText: String
+    let isNumericSearch: Bool
+    let resultCount: Int
+    
+    var body: some View {
+        HStack {
+            Image(systemName: isNumericSearch ? "yensign.circle" : "magnifyingglass")
+                .foregroundColor(isNumericSearch ? .green : .blue)
+                .font(.caption)
+            
+            Text(isNumericSearch ?
+                 "金額「\(searchText)」で検索中 - \(resultCount)件見つかりました" :
+                 "「\(searchText)」で検索中 - \(resultCount)件見つかりました")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isNumericSearch ? Color.green.opacity(0.1) : Color.blue.opacity(0.1))
+                .stroke(isNumericSearch ? Color.green.opacity(0.3) : Color.blue.opacity(0.3), lineWidth: 1)
+        )
+    }
+}
+
 // サマリーヘッダービュー（アクセシビリティ対応）
 struct ExpenseSummaryHeaderView: View {
     let totalAmount: Double
@@ -225,29 +330,46 @@ struct ExpenseSummaryHeaderView: View {
     }
 }
 
-// 検索結果なし状態ビュー（アクセシビリティ対応）
+// 更新された検索結果なし状態ビュー
 struct SearchEmptyStateView: View {
     let searchText: String
+    let isNumericSearch: Bool
     
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "magnifyingglass")
+            Image(systemName: isNumericSearch ? "yensign.circle" : "magnifyingglass")
                 .font(.system(size: 60))
                 .foregroundColor(.gray)
                 .accessibilityHidden(true)
             
             VStack(spacing: 8) {
-                Text("「\(searchText)」の検索結果がありません")
+                Text(isNumericSearch ?
+                     "金額「\(searchText)」の検索結果がありません" :
+                     "「\(searchText)」の検索結果がありません")
                     .font(.headline)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .accessibilityHidden(true)
                 
-                Text("別のキーワードで検索してみてください")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .accessibilityHidden(true)
+                if isNumericSearch {
+                    Text("金額の部分一致で検索しています。例：「500」で「1500円」もヒットします")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .accessibilityHidden(true)
+                    
+                    Text("別の金額で検索してみてください")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .accessibilityHidden(true)
+                } else {
+                    Text("メモ、カテゴリ名、または金額で検索してみてください")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .accessibilityHidden(true)
+                }
             }
         }
         .padding()
@@ -284,9 +406,12 @@ struct ExpenseSheetItem: Identifiable {
     let id: Int
 }
 
+// 更新されたExpenseRowView（検索ハイライト対応）
 struct ExpenseRowView: View {
     let expense: Expense
     let viewModel: ExpenseViewModel
+    let searchText: String
+    let highlightAmount: Bool
     @Environment(\.accessibilityVoiceOverEnabled) var voiceOverEnabled
     
     private var dateFormatter: DateFormatter {
@@ -296,23 +421,14 @@ struct ExpenseRowView: View {
         return formatter
     }
     
-    private var fullDateFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.locale = Locale(identifier: "ja_JP")
-        return formatter
-    }
-    
     private var categoryName: String {
         viewModel.categories.first(where: { $0.id == expense.categoryId })?.name ?? "不明なカテゴリ"
     }
     
-    // 動的にアイコンを取得
     private var categoryIcon: String {
         return viewModel.categoryIcon(for: expense.categoryId)
     }
 
-    // 動的に色を取得
     private var categoryColor: Color {
         let colorString = viewModel.categoryColor(for: expense.categoryId)
         return colorFromString(colorString)
@@ -343,15 +459,24 @@ struct ExpenseRowView: View {
                     .clipShape(Circle())
                     .shadow(color: categoryColor.opacity(0.3), radius: 2, x: 0, y: 1)
             }
-            .accessibilityHidden(true) // 色で情報を伝える要素は隠す
+            .accessibilityHidden(true)
             
             // メイン情報
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
+                    // 金額検索時はハイライト
                     Text("¥\(expense.amount, specifier: "%.0f")")
                         .font(.title3)
                         .fontWeight(.semibold)
-                        .foregroundColor(.primary)
+                        .foregroundColor(highlightAmount ? .green : .primary)
+                        .background(
+                            highlightAmount ?
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.green.opacity(0.2))
+                                .padding(.horizontal, -4)
+                                .padding(.vertical, -2) :
+                            nil
+                        )
                         .accessibilityHidden(true)
                     
                     Spacer()
@@ -375,7 +500,6 @@ struct ExpenseRowView: View {
                         .lineLimit(2)
                         .accessibilityHidden(true)
                 } else if voiceOverEnabled {
-                    // VoiceOverユーザーにはメモがないことを明示
                     Text("メモなし")
                         .font(.caption)
                         .foregroundColor(.gray)
@@ -391,7 +515,7 @@ struct ExpenseRowView: View {
                 .accessibilityHidden(true)
         }
         .padding(.vertical, 4)
-        .contentShape(Rectangle()) // タップ領域を明確化
+        .contentShape(Rectangle())
         .background(Color.clear)
         .cornerRadius(8)
     }

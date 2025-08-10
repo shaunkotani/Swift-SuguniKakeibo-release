@@ -133,17 +133,17 @@ struct EditExpenseView: View {
                                 }
                                 .font(.caption)
                                 .foregroundColor(.blue)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
                                 .background(Color.blue.opacity(0.1))
-                                .cornerRadius(8)
+                                .cornerRadius(6)
                             }
-                            
                             Spacer()
                         }
+                        .frame(minWidth: 200)
+                    } else {
+                        Spacer()
                     }
-                    
-                    Spacer()
                     
                     Button("完了") {
                         hideKeyboard()
