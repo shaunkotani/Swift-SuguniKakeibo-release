@@ -386,10 +386,6 @@ struct CategoryManagementRowView: View {
                 }
             }
             
-            // ドラッグハンドル
-            Image(systemName: "line.3.horizontal")
-                .foregroundColor(.gray)
-                .font(.caption)
         }
         .padding(.vertical, 8)
         .background(category.isVisible ? Color.clear : Color.gray.opacity(0.05))

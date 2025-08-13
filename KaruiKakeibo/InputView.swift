@@ -1,5 +1,5 @@
 //
-//  InputView.swift (修正版)
+//  InputView.swift (時刻選択対応版)
 //  Suguni-Kakeibo-2
 //
 //  Created by 大谷駿介 on 2025/07/29.
@@ -19,6 +19,7 @@ struct InputView: View {
     @State private var showSuccessMessage = false
     @State private var isProcessing = false
     @State private var showDoubleTapHint = false
+    @State private var keyboardHeight: CGFloat = 0
     @FocusState private var isAmountFocused: Bool
     @FocusState private var isNoteFocused: Bool
     
@@ -56,9 +57,11 @@ struct InputView: View {
                     }
                 }
                 
-                Section(header: Text("日付")) {
-                    DatePicker("日付を選択", selection: $date, in: ...Date(), displayedComponents: .date)
+                // 修正: 日付と時刻を同時に選択できるように変更
+                Section(header: Text("日付と時刻")) {
+                    DatePicker("日時を選択", selection: $date, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
                         .datePickerStyle(.compact)
+                        .environment(\.locale, Locale(identifier: "ja_JP"))
                 }
                 
                 Section(header: Text("カテゴリ")) {
@@ -81,20 +84,6 @@ struct InputView: View {
                                 note = String(newValue.prefix(100))
                             }
                         }
-                }
-                
-                Section {
-                    SaveButtonView(
-                        isButtonEnabled: isButtonEnabled,
-                        isProcessing: isProcessing,
-                        action: saveExpense,
-                        doubleTapAction: {
-                            // 連続2回タップで金額入力フィールドにフォーカス
-                            focusAmountFieldForManualTap()
-                        }
-                    )
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 }
                 
                 // 設定が有効な場合のみダブルタップヒントを表示
@@ -157,7 +146,7 @@ struct InputView: View {
                     }
                 }
             }
-            .scrollDismissesKeyboard(.interactively)
+            .scrollDismissesKeyboard(.immediately)
             .navigationTitle("支出入力")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -170,8 +159,8 @@ struct InputView: View {
                 
                 ToolbarItemGroup(placement: .keyboard) {
                     // 金額入力用のツールバー
-                    if isAmountFocused {
-                        HStack {
+                    HStack {
+                        if isAmountFocused {
                             // よく使う金額のショートカット
                             ForEach([100, 500, 1000], id: \.self) { value in
                                 Button("\(value)円") {
@@ -189,10 +178,9 @@ struct InputView: View {
                             }
                             Spacer()
                         }
-                        .frame(minWidth: 200)   // 最小幅
-                    } else {
                         Spacer()
                     }
+                    .frame(minHeight: 32)   // 最小の高さを確保
                     
                     Button("完了") {
                         hideKeyboard()
@@ -200,6 +188,21 @@ struct InputView: View {
                     .foregroundColor(.blue)
                     .fontWeight(.semibold)
                 }
+            }
+            // フロートボタンを追加
+            .safeAreaInset(edge: .bottom) {
+                FloatingActionButton(
+                    isButtonEnabled: isButtonEnabled,
+                    isProcessing: isProcessing,
+                    keyboardHeight: keyboardHeight,
+                    action: saveExpense,
+                    doubleTapAction: {
+                        focusAmountFieldForManualTap()
+                    }
+                )
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
             }
             .alert(isPresented: $showAlert) {
                 Alert(
@@ -252,6 +255,7 @@ struct InputView: View {
             .onAppear {
                 setupInitialCategory()
                 showDoubleTapHintIfNeeded()
+                setupKeyboardObservers()
             }
             .onChange(of: shouldFocusAmount) { _, newValue in
                 // 外部からのフォーカス要求を処理
@@ -271,6 +275,31 @@ struct InputView: View {
         let notProcessing = !isProcessing
         
         return hasAmount && isValidAmountValue && hasVisibleCategories && notProcessing
+    }
+    
+    // MARK: - キーボード監視の設定
+    private func setupKeyboardObservers() {
+        NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillShowNotification,
+            object: nil,
+            queue: .main
+        ) { notification in
+            if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+                withAnimation(.easeOut(duration: 0.3)) {
+                    keyboardHeight = keyboardFrame.height
+                }
+            }
+        }
+        
+        NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillHideNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            withAnimation(.easeOut(duration: 0.3)) {
+                keyboardHeight = 0
+            }
+        }
     }
     
     // MARK: - 数値入力フォーマット関数
@@ -381,28 +410,40 @@ struct InputView: View {
     private func saveExpense() {
         guard !isProcessing else { return }
         
+        // 支出を保存ボタンを押した時のHapticフィードバック
+        let lightImpact = UIImpactFeedbackGenerator(style: .light)
+        lightImpact.impactOccurred()
+        
         hideKeyboard()
         
         // より厳密な金額バリデーション
         guard !amount.isEmpty else {
+            let errorFeedback = UINotificationFeedbackGenerator()
+            errorFeedback.notificationOccurred(.error)
             alertMessage = "金額を入力してください。"
             showAlert = true
             return
         }
         
         guard let parsedAmount = Double(amount) else {
+            let errorFeedback = UINotificationFeedbackGenerator()
+            errorFeedback.notificationOccurred(.error)
             alertMessage = "金額は数値で入力してください。"
             showAlert = true
             return
         }
         
         guard parsedAmount > 0 else {
+            let errorFeedback = UINotificationFeedbackGenerator()
+            errorFeedback.notificationOccurred(.error)
             alertMessage = "金額は0円より大きい値を入力してください。"
             showAlert = true
             return
         }
         
         guard parsedAmount <= 99999999999 else {
+            let errorFeedback = UINotificationFeedbackGenerator()
+            errorFeedback.notificationOccurred(.error)
             alertMessage = "金額は999億円以下で入力してください。"
             showAlert = true
             return
@@ -411,20 +452,25 @@ struct InputView: View {
         // 可視カテゴリのチェック
         let visibleCategories = viewModel.getVisibleCategories()
         guard visibleCategories.contains(where: { $0.id == selectedCategoryId }) else {
+            let errorFeedback = UINotificationFeedbackGenerator()
+            errorFeedback.notificationOccurred(.error)
             alertMessage = "選択されたカテゴリが表示設定されていません。カテゴリを再選択してください。"
             showAlert = true
             return
         }
         
         // 未来の日付をチェック
-        let calendar = Calendar.current
-        if calendar.isDate(date, inSameDayAs: Date()) || date < Date() {
-            // 今日または過去の日付はOK
-        } else {
-            alertMessage = "未来の日付は設定できません。"
+        if date > Date() {
+            let errorFeedback = UINotificationFeedbackGenerator()
+            errorFeedback.notificationOccurred(.error)
+            alertMessage = "未来の日時は設定できません。"
             showAlert = true
             return
         }
+        
+        // 処理開始時にmediumフィードバック
+        let mediumImpact = UIImpactFeedbackGenerator(style: .medium)
+        mediumImpact.impactOccurred()
 
         isProcessing = true
         
@@ -439,6 +485,10 @@ struct InputView: View {
         
         // 保存処理
         viewModel.addExpense(expense)
+        
+        // 成功時に成功フィードバック
+        let successFeedback = UINotificationFeedbackGenerator()
+        successFeedback.notificationOccurred(.success)
         
         // 成功メッセージを表示
         withAnimation(.spring(response: 0.3)) {
@@ -482,7 +532,95 @@ struct InputView: View {
     }
 }
 
-// MARK: - カテゴリ情報構造体（Equatable対応）
+// MARK: - フロートアクションボタン
+
+struct FloatingActionButton: View {
+    let isButtonEnabled: Bool
+    let isProcessing: Bool
+    let keyboardHeight: CGFloat
+    let action: () -> Void
+    let doubleTapAction: () -> Void
+    
+    @AppStorage("autoFocusAfterSave") private var autoFocusAfterSave = true
+    
+    var buttonColor: Color {
+        if isProcessing { return .orange }
+        if isButtonEnabled { return .blue }
+        return .gray
+    }
+    
+    var buttonText: String {
+        if isProcessing { return "保存中..." }
+        if isButtonEnabled { return "支出を保存" }
+        return "入力を完了してください"
+    }
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            Button(action: {
+                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                impactFeedback.prepare()
+                impactFeedback.impactOccurred()
+                
+                action()
+            }) {
+                HStack(spacing: 12) {
+                    if isProcessing {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(0.9)
+                        Text(buttonText)
+                            .fontWeight(.semibold)
+                    } else {
+                        Image(systemName: isButtonEnabled ? "plus.circle.fill" : "exclamationmark.circle")
+                            .font(.title3)
+                        Text(buttonText)
+                            .fontWeight(.semibold)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .foregroundColor(.white)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [buttonColor, buttonColor.opacity(0.8)]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .shadow(
+                            color: isButtonEnabled ? buttonColor.opacity(0.4) : Color.clear,
+                            radius: 8,
+                            x: 0,
+                            y: 4
+                        )
+                )
+            }
+            .disabled(!isButtonEnabled || isProcessing)
+            .buttonStyle(FloatingButtonStyle())
+            .scaleEffect(isProcessing ? 0.95 : 1.0)
+            .animation(.easeInOut(duration: 0.2), value: isProcessing)
+            .animation(.easeInOut(duration: 0.3), value: isButtonEnabled)
+        }
+    }
+}
+
+// MARK: - フロートボタン用のカスタムスタイル
+
+struct FloatingButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+// MARK: - 既存のコンポーネント（変更なし）
+
+// カテゴリ情報構造体（Equatable対応）
 struct CategoryInfo: Identifiable, Equatable {
     let id: Int
     let name: String
@@ -641,76 +779,6 @@ struct CategoryButtonView: View {
         .buttonStyle(PlainButtonStyle())
         .scaleEffect(isSelected ? 1.05 : 1.0)
         .animation(.easeInOut(duration: 0.2), value: isSelected)
-    }
-}
-
-// 保存ボタンのビュー（ダブルタップ対応）
-struct SaveButtonView: View {
-    let isButtonEnabled: Bool
-    let isProcessing: Bool
-    let action: () -> Void
-    let doubleTapAction: () -> Void
-    
-    @State private var tapCount: Int = 0
-    @AppStorage("autoFocusAfterSave") private var autoFocusAfterSave = true
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            Button(action: {
-                action()
-            }) {
-                HStack(spacing: 8) {
-                    if isProcessing {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .scaleEffect(0.8)
-                        Text("保存中...")
-                    } else {
-                        Image(systemName: "plus.circle.fill")
-                        Text("支出を保存")
-                    }
-                }
-                .font(.headline)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(
-                    isButtonEnabled ?
-                    LinearGradient(
-                        gradient: Gradient(colors: [Color.blue, Color.blue.opacity(0.8)]),
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    ) :
-                    LinearGradient(
-                        gradient: Gradient(colors: [Color.gray.opacity(0.6), Color.gray.opacity(0.4)]),
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .cornerRadius(12)
-                .shadow(color: isButtonEnabled ? Color.blue.opacity(0.3) : Color.clear, radius: 4, x: 0, y: 2)
-                .contentShape(Rectangle())
-            }
-            .disabled(!isButtonEnabled || isProcessing)
-            .buttonStyle(.plain)
-            .scaleEffect(isProcessing ? 0.95 : 1.0)
-            .animation(.easeInOut(duration: 0.2), value: isProcessing)
-            
-            // ヒントテキスト
-            if !isButtonEnabled && !isProcessing {
-                if autoFocusAfterSave {
-                    Text("画面を2回タップで金額入力")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .padding(.top, 4)
-                } else {
-                    Text("設定で自動フォーカスがOFFです")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .padding(.top, 4)
-                }
-            }
-        }
     }
 }
 

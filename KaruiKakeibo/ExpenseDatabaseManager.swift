@@ -101,6 +101,7 @@ class ExpenseDatabaseManager {
         insertDefaultCategories()
     }
     
+    // MARK: - 修正1: migrateDatabase()メソッド内のインデックス作成部分
     private func migrateDatabase() {
         guard db != nil else { return }
         
@@ -153,9 +154,19 @@ class ExpenseDatabaseManager {
             }
         }
         
-        // UNIQUEインデックスを追加（重複カテゴリ名を防ぐ）
-        let createIndexString = "CREATE UNIQUE INDEX IF NOT EXISTS idx_category_name ON Category(name) WHERE isActive = 1;"
-        sqlite3_exec(db, createIndexString, nil, nil, nil)
+        // 🔥 修正：UNIQUEインデックスを修正（アクティブなカテゴリのみに制限）
+        // 既存のインデックスを削除
+        sqlite3_exec(db, "DROP INDEX IF EXISTS idx_category_name;", nil, nil, nil)
+        
+        // アクティブなカテゴリのみにユニーク制約を適用
+        let createIndexString = "CREATE UNIQUE INDEX IF NOT EXISTS idx_category_name_active ON Category(name) WHERE isActive = 1;"
+        let indexResult = sqlite3_exec(db, createIndexString, nil, nil, nil)
+        if indexResult == SQLITE_OK {
+            print("✅ ユニークインデックス作成成功")
+        } else {
+            let errorMessage = String(cString: sqlite3_errmsg(db))
+            print("❌ ユニークインデックス作成失敗: \(errorMessage)")
+        }
         
         // デフォルトカテゴリの設定を更新
         updateDefaultCategoriesSettings()
@@ -330,6 +341,7 @@ class ExpenseDatabaseManager {
         return fetchFullCategories().filter { $0.isVisible }
     }
     
+    // MARK: - 修正3: insertCategoryメソッドの改良
     func insertCategory(_ category: FullCategory) {
         guard db != nil else {
             print("❌ Database is not available.")
@@ -338,12 +350,23 @@ class ExpenseDatabaseManager {
         
         beginTransaction()
         
-        // 重複チェック
+        // 🔥 修正：アクティブなカテゴリのみで重複チェック
         if isCategoryNameExists(category.name) {
-            print("❌ Category name '\(category.name)' already exists.")
+            print("❌ Category name '\(category.name)' already exists among active categories.")
             rollbackTransaction()
             return
         }
+        
+        // 🔥 追加：同じ名前の削除済みカテゴリがある場合、完全に削除してから新規作成
+        let deleteOldString = "DELETE FROM Category WHERE name = ? AND isActive = 0;"
+        var deleteStatement: OpaquePointer?
+        if sqlite3_prepare_v2(db, deleteOldString, -1, &deleteStatement, nil) == SQLITE_OK {
+            sqlite3_bind_text(deleteStatement, 1, (category.name as NSString).utf8String, -1, nil)
+            if sqlite3_step(deleteStatement) == SQLITE_DONE {
+                print("🗑️ Deleted old inactive category with same name: \(category.name)")
+            }
+        }
+        sqlite3_finalize(deleteStatement)
         
         let insertString = """
         INSERT INTO Category (name, icon, color, isDefault, isVisible, isActive, sortOrder, createdAt) 
@@ -375,6 +398,7 @@ class ExpenseDatabaseManager {
         sqlite3_finalize(insertStatement)
     }
     
+    // MARK: - 修正4: updateCategoryメソッドの改良
     func updateCategory(_ category: FullCategory) {
         guard db != nil else {
             print("❌ Database is not available.")
@@ -383,12 +407,27 @@ class ExpenseDatabaseManager {
         
         beginTransaction()
         
-        // 名前が変更される場合の重複チェック
+        // 🔥 修正：名前が変更される場合の重複チェック
         let currentName = getCurrentCategoryName(id: category.id)
-        if currentName != category.name && isCategoryNameExists(category.name) {
-            print("❌ Category name '\(category.name)' already exists.")
-            rollbackTransaction()
-            return
+        if currentName != category.name {
+            // 名前が変更される場合のみ重複チェック
+            if isCategoryNameExists(category.name) {
+                print("❌ Category name '\(category.name)' already exists among active categories.")
+                rollbackTransaction()
+                return
+            }
+            
+            // 🔥 追加：同じ名前の削除済みカテゴリがある場合、完全に削除
+            let deleteOldString = "DELETE FROM Category WHERE name = ? AND isActive = 0 AND id != ?;"
+            var deleteStatement: OpaquePointer?
+            if sqlite3_prepare_v2(db, deleteOldString, -1, &deleteStatement, nil) == SQLITE_OK {
+                sqlite3_bind_text(deleteStatement, 1, (category.name as NSString).utf8String, -1, nil)
+                sqlite3_bind_int(deleteStatement, 2, Int32(category.id))
+                if sqlite3_step(deleteStatement) == SQLITE_DONE {
+                    print("🗑️ Deleted old inactive category with same name: \(category.name)")
+                }
+            }
+            sqlite3_finalize(deleteStatement)
         }
         
         let updateString = """
@@ -523,10 +562,10 @@ class ExpenseDatabaseManager {
     }
     
     // MARK: - ヘルパーメソッド
-    
     private func isCategoryNameExists(_ name: String) -> Bool {
         guard db != nil else { return false }
         
+        // 🔥 修正：アクティブなカテゴリのみをチェック
         let queryString = "SELECT COUNT(*) FROM Category WHERE name = ? AND isActive = 1;"
         var queryStatement: OpaquePointer?
         var exists = false

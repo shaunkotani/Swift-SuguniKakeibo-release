@@ -1,5 +1,5 @@
 //
-//  SettingView.swift (デフォルトカテゴリリセット機能追加版)
+//  SettingView.swift (レスポンス改善版)
 //  Suguni-Kakeibo-2
 //
 //  Created by 大谷駿介 on 2025/07/29.
@@ -9,23 +9,24 @@ import SwiftUI
 
 struct SettingView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
-    @AppStorage("currency") private var currency = "円"
+//    @AppStorage("currency") private var currency = "円"
     @AppStorage("notificationsEnabled") private var notificationsEnabled = true
-    @AppStorage("autoFocusAfterSave") private var autoFocusAfterSave = true
+    @AppStorage("autoFocusAfterSave") private var autoFocusAfterSave = false
     @State private var showingExportView = false
     @State private var showingCategoryManagement = false
     @State private var showingResetCategoriesAlert = false
     @State private var showingResetSettingsAlert = false
-    @FocusState private var isCurrencyFocused: Bool
+    @State private var isResetingCategories = false
+//    @FocusState private var isCurrencyFocused: Bool
     
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("入力設定")) {
+                Section(header: Text("便利機能")) {
                     VStack(alignment: .leading, spacing: 8) {
                         Toggle("保存後に自動で金額入力にフォーカス", isOn: $autoFocusAfterSave)
                         
-                        Text("支出保存後、次の入力のために金額フィールドに自動でカーソルを移動します")
+                        Text("支出保存後、続けて入力する際に金額フィールドに自動でカーソルを移動する機能です")
                             .font(.caption)
                             .foregroundColor(.secondary)
                             .padding(.top, 4)
@@ -33,100 +34,190 @@ struct SettingView: View {
                     .padding(.vertical, 4)
                 }
                 
-                Section(header: Text("通貨設定")) {
-                    TextField("通貨単位", text: $currency)
-                        .focused($isCurrencyFocused)
-                }
+//                Section(header: Text("通貨設定")) {
+//                    TextField("通貨単位", text: $currency)
+//                        .focused($isCurrencyFocused)
+//                }
                 
-                // カテゴリ管理セクション
+                // カテゴリ管理セクション（改善版）
                 Section(header: Text("カテゴリ管理")) {
+                    // カテゴリ編集ボタン（改善版）
                     Button(action: {
+                        // ハプティックフィードバックを追加
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
                         showingCategoryManagement = true
                     }) {
-                        HStack {
-                            Image(systemName: "tag.circle")
-                                .foregroundColor(.orange)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("カテゴリの編集")
-                                    .foregroundColor(.primary)
-                                Text("カテゴリの追加・編集・表示設定")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .foregroundColor(.gray)
-                                .font(.caption)
-                        }
-                        .contentShape(Rectangle())
+                        CategoryManagementButtonView(
+                            icon: "tag.circle",
+                            title: "カテゴリの編集",
+                            subtitle: "カテゴリの追加・編集・表示設定",
+                            color: .orange
+                        )
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(ResponsiveButtonStyle())
                     
-                    // デフォルトカテゴリリセット機能を追加
+                    // デフォルトカテゴリリセットボタン（改善版）
                     Button(action: {
+                        // ハプティックフィードバックを追加
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                        impactFeedback.impactOccurred()
                         showingResetCategoriesAlert = true
                     }) {
-                        HStack {
-                            Image(systemName: "arrow.clockwise.circle")
-                                .foregroundColor(.blue)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("デフォルトカテゴリをリセット")
-                                    .foregroundColor(.primary)
-                                Text("基本カテゴリ（食費・交通費・娯楽・家賃）を復元")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                        }
-                        .contentShape(Rectangle())
+                        CategoryManagementButtonView(
+                            icon: "arrow.clockwise.circle",
+                            title: "デフォルトカテゴリにリセット",
+                            subtitle: "基本カテゴリ（食費・交通費・娯楽・家賃）を復元する",
+                            color: .blue,
+                            isProcessing: isResetingCategories
+                        )
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(ResponsiveButtonStyle())
+                    .disabled(isResetingCategories)
                 }
                 
-                Section(header: Text("通知")) {
-                    Toggle("通知を有効にする", isOn: $notificationsEnabled)
-                }
+//                Section(header: Text("通知")) {
+//                    Toggle("通知を有効にする", isOn: $notificationsEnabled)
+//                }
                 
                 Section(header: Text("データ管理")) {
                     Button(action: {
+                        // ハプティックフィードバックを追加
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
                         showingExportView = true
                     }) {
-                        HStack {
-                            Image(systemName: "square.and.arrow.up")
-                                .foregroundColor(.blue)
-                            Text("CSVエクスポート")
-                                .foregroundColor(.primary)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .foregroundColor(.gray)
-                                .font(.caption)
-                        }
-                        .contentShape(Rectangle())
+                        DataManagementButtonView(
+                            icon: "square.and.arrow.up",
+                            title: "CSVエクスポート",
+                            color: .blue
+                        )
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(ResponsiveButtonStyle())
                 }
                 
                 Section(header: Text("アプリ情報")) {
                     HStack {
                         Text("バージョン")
                         Spacer()
-                        Text("1.0.0")
+                        Text("1.1.0")
                             .foregroundColor(.gray)
                     }
-                    
-                    // 設定のリセット
+                    // サポートページリンク
                     Button(action: {
-                        showingResetSettingsAlert = true
-                    }) {
-                        HStack {
-                            Image(systemName: "arrow.clockwise")
-                                .foregroundColor(.orange)
-                            Text("設定をリセット")
-                                .foregroundColor(.orange)
+                        // ハプティックフィードバック
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
+                        
+                        // サポートページを開く
+                        if let url = URL(string: "https://shaunkotani.notion.site/249a49609c378016af1ff3f64b17a790?source=copy_link") {
+                            UIApplication.shared.open(url)
                         }
+                    }) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "questionmark.circle")
+                                .foregroundColor(.blue)
+                                .font(.title3)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("サポート・お問い合わせ")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.primary)
+                                Text("ヘルプやお問い合わせはこちら")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            Image(systemName: "arrow.up.right.square")
+                                .foregroundColor(.blue)
+                                .font(.caption)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(ResponsiveButtonStyle())
+                    
+                    // プライバシーポリシーリンク（オプション）
+                    Button(action: {
+                        // ハプティックフィードバック
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
+                        
+                        // プライバシーポリシーページを開く
+                        if let url = URL(string: "https://shaunkotani.notion.site/249a49609c3780a6bd78dfd458b0d86c?source=copy_link") {
+                            UIApplication.shared.open(url)
+                        }
+                    }) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "hand.raised")
+                                .foregroundColor(.blue)
+                                .font(.title3)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("プライバシーポリシー")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.primary)
+                                Text("個人情報の取り扱いについて")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            Image(systemName: "arrow.up.right.square")
+                                .foregroundColor(.blue)
+                                .font(.caption)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(ResponsiveButtonStyle())
+                    
+                    // アプリレビューリンク（オプション）
+                    Button(action: {
+                        // ハプティックフィードバック
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
+                        
+                        // App Storeのレビューページを開く
+                        // 実際のアプリIDに置き換えてください
+                        if let url = URL(string: "https://itunes.apple.com/jp/app/id6749777703?action=write-review") {
+                            UIApplication.shared.open(url)
+                        }
+                    }) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "star")
+                                .foregroundColor(.orange)
+                                .font(.title3)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("アプリを評価")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.primary)
+                                Text("App Storeでレビューを書く")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            Image(systemName: "arrow.up.right.square")
+                                .foregroundColor(.orange)
+                                .font(.caption)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(ResponsiveButtonStyle())
+
                 }
+                
+
                 
                 // デバッグセクション（開発時のみ表示）
                 #if DEBUG
@@ -140,23 +231,66 @@ struct SettingView: View {
                             Text("カテゴリ情報をコンソールに出力")
                                 .foregroundColor(.primary)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(ResponsiveButtonStyle())
                 }
                 #endif
-            }
-            .navigationTitle("設定")
-            .toolbar {
-                // キーボード用ツールバーを追加
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("完了") {
-                        isCurrencyFocused = false
+                
+                
+                Section(header: Text("アプリ設定のリセット")) {
+                    // 設定のリセット（改善版）
+                    Button(action: {
+                        // ハプティックフィードバックを追加
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                        impactFeedback.impactOccurred()
+                        showingResetSettingsAlert = true
+                    }) {
+                        HStack {
+                            Image(systemName: "arrow.clockwise")
+                                .foregroundColor(.orange)
+                                .font(.title3)
+                            Text("設定をリセット")
+                                .foregroundColor(.orange)
+                                .fontWeight(.medium)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
-                    .foregroundColor(.blue)
-                    .fontWeight(.semibold)
+                    .buttonStyle(ResponsiveButtonStyle())
+                }
+                
+                // コピーライト表示（最下部）
+                Section {
+                    VStack(spacing: 8) {
+                        Text("© 2025 大谷駿介")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        Text("軽い家計簿 - Karui Kakeibo")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .italic()
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
                 }
             }
+            .navigationTitle("設定")
+//            .toolbar {
+//                // キーボード用ツールバーを追加
+//                ToolbarItemGroup(placement: .keyboard) {
+//                    Spacer()
+//                    Button("完了") {
+//                        isCurrencyFocused = false
+//                    }
+//                    .foregroundColor(.blue)
+//                    .fontWeight(.semibold)
+//                }
+//            }
             .sheet(isPresented: $showingExportView) {
                 CSVExportView()
                     .environmentObject(viewModel)
@@ -167,7 +301,7 @@ struct SettingView: View {
             }
             .alert("デフォルトカテゴリをリセット", isPresented: $showingResetCategoriesAlert) {
                 Button("リセット", role: .destructive) {
-                    viewModel.resetDefaultCategories()
+                    performCategoryReset()
                 }
                 Button("キャンセル", role: .cancel) { }
             } message: {
@@ -181,28 +315,150 @@ struct SettingView: View {
             } message: {
                 Text("アプリの設定を初期状態に戻します。\nカテゴリや支出データは変更されません。")
             }
+//            // onTapGestureを条件付きに変更
+//            .simultaneousGesture(
+//                TapGesture()
+//                    .onEnded { _ in
+//                        // キーボードが表示されている時のみキーボードを閉じる
+//                        if isCurrencyFocused {
+//                            isCurrencyFocused = false
+//                        }
+//                    }
+//            )
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if isCurrencyFocused {
-                isCurrencyFocused = false
+    }
+    
+    // MARK: - 非同期処理関数
+    
+    private func performCategoryReset() {
+        isResetingCategories = true
+        
+        // 重い処理を非同期で実行
+        Task {
+            viewModel.resetDefaultCategories()
+            
+            // メインスレッドでUI更新
+            await MainActor.run {
+                isResetingCategories = false
+                
+                // 成功のハプティックフィードバック
+                let notificationFeedback = UINotificationFeedbackGenerator()
+                notificationFeedback.notificationOccurred(.success)
+                
+                print("⚙️ デフォルトカテゴリをリセットしました")
             }
         }
     }
     
     private func resetSettings() {
-        currency = "円"
+//        currency = "円"
         notificationsEnabled = true
         autoFocusAfterSave = true
         
         // その他のUserDefaultsもリセット（必要に応じて）
         UserDefaults.standard.removeObject(forKey: "doubleTapHintShown")
         
+        // 成功のハプティックフィードバック
+        let notificationFeedback = UINotificationFeedbackGenerator()
+        notificationFeedback.notificationOccurred(.success)
+        
         print("⚙️ 設定をリセットしました")
     }
 }
 
-// 既存のCSVExportViewとShareSheetはそのまま保持
+// MARK: - カスタムボタンスタイル
+
+struct ResponsiveButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+            .background(    // ver1.1で追加
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(configuration.isPressed ? Color.gray.opacity(0.2) : Color.clear)
+            )
+            .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
+// MARK: - カスタムボタンビュー
+
+struct CategoryManagementButtonView: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let color: Color
+    var isProcessing: Bool = false
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Image(systemName: icon)
+                    .foregroundColor(color)
+                    .font(.title2)
+                    .opacity(isProcessing ? 0 : 1)
+                
+                if isProcessing {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: color))
+                        .scaleEffect(0.8)
+                }
+            }
+            .frame(width: 24, height: 24)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .foregroundColor(.primary)
+                    .fontWeight(.medium)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.leading)
+            }
+            
+            Spacer()
+            
+            if !isProcessing {
+                Image(systemName: "chevron.right")
+                    .foregroundColor(.gray)
+                    .font(.caption)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .opacity(isProcessing ? 0.7 : 1.0)
+    }
+}
+
+struct DataManagementButtonView: View {
+    let icon: String
+    let title: String
+    let color: Color
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundColor(color)
+                .font(.title2)
+            
+            Text(title)
+                .foregroundColor(.primary)
+                .fontWeight(.medium)
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .foregroundColor(.gray)
+                .font(.caption)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - 既存のCSVExportViewとShareSheetはそのまま保持
+
 struct CSVExportView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
     @Environment(\.dismiss) private var dismiss
@@ -325,7 +581,7 @@ struct CSVExportView: View {
                         .cornerRadius(10)
                     }
                     .disabled(isExporting || filteredExpenses.isEmpty)
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(ResponsiveButtonStyle())
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
                 }

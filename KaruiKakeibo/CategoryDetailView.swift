@@ -1,14 +1,26 @@
 //
-//  CategoryDetailView.swift
+//  CategoryDetailView.swift (修正版)
 //  Suguni-Kakeibo-2
 //
 //  Created by AI Assistant on 2025/08/05.
 //
-
+import UIKit
 import SwiftUI
+
+extension UINavigationController: UIGestureRecognizerDelegate {
+    override open func viewDidLoad() {
+        super.viewDidLoad()
+        interactivePopGestureRecognizer?.delegate = self
+    }
+
+    public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        return viewControllers.count > 1
+    }
+}
 
 struct CategoryDetailView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
+    @Environment(\.presentationMode) private var presentationMode
     let categoryName: String
     let categoryId: Int
     let selectedMonth: Date
@@ -89,6 +101,21 @@ struct CategoryDetailView: View {
             }
             .navigationTitle("\(categoryName)の詳細")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: {
+                        // 画面を閉じる
+                        presentationMode.wrappedValue.dismiss()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                            Text("カテゴリ別集計")
+                        }
+                    }
+                    .foregroundColor(.blue)
+                }
+            }
             .refreshable {
                 viewModel.fetchExpenses()
             }
@@ -215,16 +242,10 @@ struct CategoryDetailRowView: View {
     let expense: Expense
     let categoryColor: Color
     
-    private var dateFormatter: DateFormatter {
+    // 修正: 日時表示を「M/d HH:mm」形式に統一
+    private var dateTimeFormatter: DateFormatter {
         let formatter = DateFormatter()
-        formatter.dateFormat = "M月d日(E)"
-        formatter.locale = Locale(identifier: "ja_JP")
-        return formatter
-    }
-    
-    private var timeFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
+        formatter.dateFormat = "M/d HH:mm"
         formatter.locale = Locale(identifier: "ja_JP")
         return formatter
     }
@@ -255,7 +276,8 @@ struct CategoryDetailRowView: View {
                     
                     Spacer()
                     
-                    Text("\(expense.date, formatter: dateFormatter)")
+                    // 修正: 日時表示を統一フォーマットに変更
+                    Text("\(expense.date, formatter: dateTimeFormatter)")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }

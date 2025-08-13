@@ -414,9 +414,10 @@ struct ExpenseRowView: View {
     let highlightAmount: Bool
     @Environment(\.accessibilityVoiceOverEnabled) var voiceOverEnabled
     
+    // 修正: 日時表示を「yyyy/M/d HH:mm」形式に変更
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
-        formatter.dateFormat = voiceOverEnabled ? "M月d日" : "M月d日"
+        formatter.dateFormat = "yyyy/M/d HH:mm"
         formatter.locale = Locale(identifier: "ja_JP")
         return formatter
     }
@@ -481,6 +482,7 @@ struct ExpenseRowView: View {
                     
                     Spacer()
                     
+                    // 修正: 日時表示を統一フォーマットに変更
                     Text("\(expense.date, formatter: dateFormatter)")
                         .font(.caption)
                         .foregroundColor(.secondary)

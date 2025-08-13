@@ -1,5 +1,5 @@
 //
-//  EditExpenseView.swift (修正版)
+//  EditExpenseView.swift (時刻選択対応版)
 //  Suguni-Kakeibo-2
 //
 
@@ -52,8 +52,9 @@ struct EditExpenseView: View {
                     }
                 }
                 
-                Section(header: Text("日付")) {
-                    DatePicker("日付を選択", selection: $date, in: ...Date(), displayedComponents: .date)
+                // 修正: 日付と時刻を同時に選択できるように変更
+                Section(header: Text("日付と時刻")) {
+                    DatePicker("日時を選択", selection: $date, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
                         .datePickerStyle(.compact)
                         .environment(\.locale, Locale(identifier: "ja_JP"))
                 }
@@ -315,12 +316,9 @@ struct EditExpenseView: View {
         }
         
         // 未来の日付をチェック
-        let calendar = Calendar.current
-        if calendar.isDate(date, inSameDayAs: Date()) || date < Date() {
-            // 今日または過去の日付はOK
-        } else {
+        if date > Date() {
             alertType = .error
-            alertMessage = "未来の日付は設定できません。"
+            alertMessage = "未来の日時は設定できません。"
             showAlert = true
             return
         }

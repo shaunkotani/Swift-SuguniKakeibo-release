@@ -1,6 +1,6 @@
 //
-//  ContentView.swift (修正版)
-//  ダブルタップでフォーカス機能を追加
+//  ContentView.swift (TabView再タップ機能追加版)
+//  家計簿アプリ
 
 import SwiftUI
 
@@ -9,9 +9,9 @@ struct ContentView: View {
     @State private var shouldFocusAmount: Bool = false
     @State private var selectedTab: Int = 0
     
-    // ダブルタップ検出用の状態
+    // TabView再タップ検出用の状態
+    @State private var previousSelectedTab: Int = 0
     @State private var lastTapTime: Date = Date()
-    @State private var tapCount: Int = 0
     
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -45,7 +45,7 @@ struct ContentView: View {
             ExpensesView()
                 .environmentObject(viewModel)
                 .tabItem {
-                    Label("履歴", systemImage: "list.bullet")
+                    Label("履歴と編集", systemImage: "list.bullet")
                 }
                 .tag(3)
 
@@ -57,44 +57,35 @@ struct ContentView: View {
                 .tag(4)
         }
         .onChange(of: selectedTab) { oldValue, newValue in
-            // 入力タブが選択されたときの処理
-            if newValue == 2 {
-                handleInputTabSelection()
-            }
+            handleTabChange(from: oldValue, to: newValue)
         }
     }
     
-    private func handleInputTabSelection() {
+    private func handleTabChange(from oldTab: Int, to newTab: Int) {
         let now = Date()
         let timeDifference = now.timeIntervalSince(lastTapTime)
         
-        // 0.5秒以内の連続タップをダブルタップとして検出
-        if timeDifference < 0.5 && selectedTab == 2 {
-            tapCount += 1
-            if tapCount >= 2 {
-                // ダブルタップ検出
+        // 入力タブ（2）が選択された場合の処理
+        if newTab == 2 {
+            // 既に入力タブが選択されていて、0.5秒以内に再タップされた場合
+            if oldTab == 2 && timeDifference < 0.5 {
+                // 金額フィールドにフォーカス
                 shouldFocusAmount = true
-                tapCount = 0
                 
                 // ハプティックフィードバック
-                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
                 impactFeedback.impactOccurred()
                 
-                print("💰 入力タブをダブルタップ - 金額フィールドにフォーカス")
+                print("💰 入力タブ再タップ - 金額フィールドにフォーカス")
             }
-        } else {
-            tapCount = 1
         }
         
+        // 現在の時刻を記録
         lastTapTime = now
-        
-        // タップカウントをリセット（1秒後）
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            tapCount = 0
-        }
+        previousSelectedTab = oldTab
     }
     
-    // 他のビューから呼び出せる関数
+    // 他のビューから呼び出せる関数（既存機能を維持）
     func navigateToInputWithFocus() {
         // 入力タブに切り替え
         selectedTab = 2

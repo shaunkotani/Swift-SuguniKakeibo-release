@@ -1,5 +1,5 @@
 //
-//  DailyDetailView.swift
+//  DailyDetailView.swift (修正版)
 //  Suguni-Kakeibo-2
 //
 //  Created by AI Assistant on 2025/08/05.
@@ -366,9 +366,10 @@ struct DailyDetailRowView: View {
     let showCategory: Bool
     let viewModel: ExpenseViewModel
     
-    private var timeFormatter: DateFormatter {
+    // 修正: 日時表示を「M/d HH:mm」形式に統一
+    private var dateTimeFormatter: DateFormatter {
         let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
+        formatter.dateFormat = "M/d HH:mm"
         formatter.locale = Locale(identifier: "ja_JP")
         return formatter
     }
@@ -421,7 +422,8 @@ struct DailyDetailRowView: View {
                     
                     Spacer()
                     
-                    Text("\(expense.date, formatter: timeFormatter)")
+                    // 修正: 日時表示を統一フォーマットに変更
+                    Text("\(expense.date, formatter: dateTimeFormatter)")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
