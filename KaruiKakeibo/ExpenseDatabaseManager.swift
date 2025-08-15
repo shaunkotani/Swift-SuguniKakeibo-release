@@ -170,6 +170,8 @@ class ExpenseDatabaseManager {
         
         // デフォルトカテゴリの設定を更新
         updateDefaultCategoriesSettings()
+        // 初回のみVisibleを設定する必要がある
+        setInitialDefaultCategoriesVisibility()
         
         print("🔧 データベースマイグレーション完了")
     }
@@ -222,9 +224,10 @@ class ExpenseDatabaseManager {
         ]
         
         for (name, icon, color) in defaultCategoriesInfo {
+            // 🔥 修正：isVisibleを除外して、ユーザー設定を保持
             let updateString = """
             UPDATE Category 
-            SET icon = ?, color = ?, isDefault = 1, isVisible = 1, isActive = 1
+            SET icon = ?, color = ?, isDefault = 1, isActive = 1
             WHERE name = ? AND isActive = 1;
             """
             var updateStatement: OpaquePointer?
@@ -232,9 +235,43 @@ class ExpenseDatabaseManager {
                 sqlite3_bind_text(updateStatement, 1, (icon as NSString).utf8String, -1, nil)
                 sqlite3_bind_text(updateStatement, 2, (color as NSString).utf8String, -1, nil)
                 sqlite3_bind_text(updateStatement, 3, (name as NSString).utf8String, -1, nil)
-                sqlite3_step(updateStatement)
+                
+                if sqlite3_step(updateStatement) == SQLITE_DONE {
+                    print("✅ デフォルトカテゴリ更新（isVisibleを保持）: \(name)")
+                }
             }
             sqlite3_finalize(updateStatement)
+        }
+    }
+    
+    // さらに安全にするため、マイグレーション時の初回のみisVisibleを設定
+    private func setInitialDefaultCategoriesVisibility() {
+        guard db != nil else { return }
+        
+        // 初回のみ実行するためのフラグチェック
+        let checkString = "SELECT COUNT(*) FROM Category WHERE isDefault = 1 AND isVisible IS NOT NULL;"
+        var checkStatement: OpaquePointer?
+        var hasVisibilitySet = false
+        
+        if sqlite3_prepare_v2(db, checkString, -1, &checkStatement, nil) == SQLITE_OK {
+            if sqlite3_step(checkStatement) == SQLITE_ROW {
+                let count = sqlite3_column_int(checkStatement, 0)
+                hasVisibilitySet = count > 0
+            }
+        }
+        sqlite3_finalize(checkStatement)
+        
+        // 初回のみisVisibleを1に設定
+        if !hasVisibilitySet {
+            let updateString = """
+            UPDATE Category 
+            SET isVisible = 1 
+            WHERE isDefault = 1 AND isActive = 1 AND isVisible IS NULL;
+            """
+            let result = sqlite3_exec(db, updateString, nil, nil, nil)
+            if result == SQLITE_OK {
+                print("✅ デフォルトカテゴリの初期isVisible設定完了")
+            }
         }
     }
 

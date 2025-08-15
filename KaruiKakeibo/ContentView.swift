@@ -95,6 +95,14 @@ struct TabBarControllerRepresentable: UIViewControllerRepresentable {
         let tabBarController = UITabBarController()
         tabBarController.delegate = context.coordinator
         
+        // TabBarの外観を明示的に設定
+        let appearance = UITabBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = UIColor.systemBackground
+        
+        tabBarController.tabBar.standardAppearance = appearance
+        tabBarController.tabBar.scrollEdgeAppearance = appearance
+        
         // 各タブをUIHostingControllerでラップ
         let calendarVC = UIHostingController(rootView: calendarView)
         calendarVC.tabBarItem = UITabBarItem(

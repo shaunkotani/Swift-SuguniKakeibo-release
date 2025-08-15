@@ -125,7 +125,9 @@ struct ExpensesView: View {
                 List {
                     ForEach(filteredExpenses) { expense in
                         Button(action: {
-                            selectedExpenseId = expense.id
+                            if !isKeyboardVisible {
+                                selectedExpenseId = expense.id
+                            }
                         }) {
                             ExpenseRowView(
                                 expense: expense,
@@ -136,9 +138,10 @@ struct ExpensesView: View {
                         }
                         .buttonStyle(PlainButtonStyle())
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .contentShape(Rectangle())
                         .accessibilityElement(children: .combine)
                         .accessibilityLabel(createExpenseAccessibilityLabel(for: expense))
-                        .accessibilityHint("ダブルタップして編集")
+                        .accessibilityHint("タップして編集")
                         .accessibilityAction(named: "編集") {
                             selectedExpenseId = expense.id
                         }
@@ -146,6 +149,7 @@ struct ExpensesView: View {
                             expenseToDelete = expense
                             showingDeleteConfirmation = true
                         }
+                        .disabled(isKeyboardVisible)
                     }
                     .onDelete(perform: deleteExpenses)
                 }
@@ -191,10 +195,34 @@ struct ExpensesView: View {
                     }
                 }
             }
-            // 🎹 背景タップでキーボードを閉じる
-            .onTapGesture {
-                if isKeyboardVisible {
-                    hideKeyboard()
+            .simultaneousGesture(
+                TapGesture()
+                    .onEnded { _ in
+                        // キーボードが表示されている時のみ反応
+                        if isKeyboardVisible {
+                            hideKeyboard()
+                        }
+                    }
+            )
+            // 🔥 修正：背景タップ用の別アプローチ
+            .background(
+                // キーボード表示時のみ背景タップを有効にする
+                Group {
+                    if isKeyboardVisible {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                hideKeyboard()
+                            }
+                    } else {
+                        Color.clear
+                    }
+                }
+                .allowsHitTesting(isKeyboardVisible) // キーボード表示時のみタップを許可
+            )
+            .accessibilityAction(.escape) {
+                if !searchText.isEmpty {
+                    searchText = ""
                 }
             }
             .accessibilityAction(.escape) {
