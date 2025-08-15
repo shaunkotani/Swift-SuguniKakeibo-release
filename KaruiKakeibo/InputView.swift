@@ -1,5 +1,5 @@
 //
-//  InputView.swift (時刻選択対応版)
+//  InputView.swift (タブ再選択対応版)
 //  Suguni-Kakeibo-2
 //
 //  Created by 大谷駿介 on 2025/07/29.
@@ -18,7 +18,6 @@ struct InputView: View {
     @State private var alertMessage = ""
     @State private var showSuccessMessage = false
     @State private var isProcessing = false
-    @State private var showDoubleTapHint = false
     @State private var keyboardHeight: CGFloat = 0
     @FocusState private var isAmountFocused: Bool
     @FocusState private var isNoteFocused: Bool
@@ -34,7 +33,7 @@ struct InputView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("金額 (画面を2回タップでフォーカスできます)")) {
+                Section(header: Text("金額 (下部入力タブを再タップでフォーカス)")) {
                     HStack {
                         Text("¥")
                             .foregroundColor(.secondary)
@@ -57,7 +56,7 @@ struct InputView: View {
                     }
                 }
                 
-                // 修正: 日付と時刻を同時に選択できるように変更
+                // 日付と時刻を同時に選択できるように変更
                 Section(header: Text("日付と時刻")) {
                     DatePicker("日時を選択", selection: $date, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
                         .datePickerStyle(.compact)
@@ -84,23 +83,6 @@ struct InputView: View {
                                 note = String(newValue.prefix(100))
                             }
                         }
-                }
-                
-                // 設定が有効な場合のみダブルタップヒントを表示
-                if showDoubleTapHint && autoFocusAfterSave {
-                    Section {
-                        HStack {
-                            Image(systemName: "hand.tap.fill")
-                                .foregroundColor(.blue)
-                            Text("画面をダブルタップで金額入力に戻れます")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                        }
-                        .padding(.vertical, 8)
-                        .listRowBackground(Color.blue.opacity(0.05))
-                    }
-                    .transition(.opacity.combined(with: .scale))
                 }
                 
                 // 自動フォーカス設定の案内
@@ -182,7 +164,7 @@ struct InputView: View {
                     }
                     .frame(minHeight: 32)   // 最小の高さを確保
                     
-                    Button("完了") {
+                    Button("閉じる") {
                         hideKeyboard()
                     }
                     .foregroundColor(.blue)
@@ -195,10 +177,7 @@ struct InputView: View {
                     isButtonEnabled: isButtonEnabled,
                     isProcessing: isProcessing,
                     keyboardHeight: keyboardHeight,
-                    action: saveExpense,
-                    doubleTapAction: {
-                        focusAmountFieldForManualTap()
-                    }
+                    action: saveExpense
                 )
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -232,10 +211,9 @@ struct InputView: View {
                 }
                 .allowsHitTesting(false)
             )
-            // 修正: 背景タップでキーボードを閉じる
+            // 背景タップでキーボードを閉じる
             .contentShape(Rectangle())
             .simultaneousGesture(
-                // シングルタップ：キーボードを閉じる（フィールドにフォーカス中のみ）
                 TapGesture(count: 1)
                     .onEnded { _ in
                         if isAmountFocused || isNoteFocused {
@@ -243,25 +221,28 @@ struct InputView: View {
                         }
                     }
             )
-            .simultaneousGesture(
-                // ダブルタップ：金額フィールドにフォーカス
-                TapGesture(count: 2)
-                    .onEnded { _ in
-                        if !isAmountFocused {
-                            focusAmountFieldForManualTap()
-                        }
-                    }
-            )
             .onAppear {
                 setupInitialCategory()
-                showDoubleTapHintIfNeeded()
                 setupKeyboardObservers()
             }
-            .onChange(of: shouldFocusAmount) { _, newValue in
+            .onChange(of: shouldFocusAmount) { oldValue, newValue in
+                print("🎯 InputView shouldFocusAmount 変更: \(oldValue) -> \(newValue)")
                 // 外部からのフォーカス要求を処理
                 if newValue {
-                    focusAmountField()
+                    print("🎯 handleExternalFocusRequest() を呼び出し")
+                    handleExternalFocusRequest()
                     shouldFocusAmount = false
+                    print("🎯 shouldFocusAmount を false にリセット")
+                } else {
+                    print("🎯 newValue が false のため何もしない")
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .tabReselected)) { notification in
+                // 入力タブが再選択されたかをチェック
+                if let index = notification.userInfo?["index"] as? Int,
+                   index == 2 { // AppTab.input.rawValue
+                    print("🎯 入力タブ再選択通知を受信")
+                    handleTabReselection()
                 }
             }
         }
@@ -327,31 +308,71 @@ struct InputView: View {
         return filtered
     }
     
-    // 手動タップ用のフォーカス関数（設定に関係なく常に動作）
-    private func focusAmountFieldForManualTap() {
-        // 既に金額フィールドにフォーカスしている場合は何もしない
-        guard !isAmountFocused else { return }
+    // タブ再選択時の処理
+    private func handleTabReselection() {
+        print("🎯 handleTabReselection() 開始")
+        print("🎯 現在のフォーカス状態 - amount: \(isAmountFocused), note: \(isNoteFocused)")
         
-        // キーボードを一旦閉じてから金額入力にフォーカス
+        // 全てのフォーカスを一旦解除
+        isAmountFocused = false
         isNoteFocused = false
+        print("🎯 全フィールドのフォーカスを解除")
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            isAmountFocused = true
+        // 少し遅延してから金額フィールドにフォーカス
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            print("🎯 金額フィールドにフォーカス設定中...")
+            self.isAmountFocused = true
+            print("🎯 金額フィールドにフォーカス設定完了: \(self.isAmountFocused)")
             
-            // ハプティックフィードバック
-            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-            impactFeedback.impactOccurred()
-            
-            print("💰 手動ダブルタップで金額入力フィールドにフォーカス")
+            // さらに少し待ってから状態確認
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                print("🎯 最終フォーカス状態確認 - amount: \(self.isAmountFocused), note: \(self.isNoteFocused)")
+            }
         }
+        
+        // ハプティックフィードバック
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+        
+        print("💰 タブ再選択により金額入力フィールドにフォーカス")
     }
-
+    
+    // 外部からのフォーカス要求を処理する関数
+    private func handleExternalFocusRequest() {
+        print("🎯 handleExternalFocusRequest() 開始")
+        print("🎯 現在のフォーカス状態 - amount: \(isAmountFocused), note: \(isNoteFocused)")
+        
+        // 全てのフォーカスを一旦解除
+        isAmountFocused = false
+        isNoteFocused = false
+        print("🎯 全フィールドのフォーカスを解除")
+        
+        // 少し長めの遅延で確実にフォーカス
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            print("🎯 金額フィールドにフォーカス設定中...")
+            isAmountFocused = true
+            print("🎯 金額フィールドにフォーカス設定完了: \(isAmountFocused)")
+            
+            // さらに少し待ってから状態確認
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                print("🎯 最終フォーカス状態確認 - amount: \(isAmountFocused), note: \(isNoteFocused)")
+            }
+        }
+        
+        // ハプティックフィードバック
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+        
+        print("💰 外部要求により金額入力フィールドにフォーカス")
+    }
+    
     // 自動フォーカス用の関数（設定に依存）
     private func focusAmountField() {
         // 設定で無効になっている場合は何もしない
         guard autoFocusAfterSave else { return }
         
-        focusAmountFieldForManualTap()
+        handleExternalFocusRequest()
+        print("⚙️ 自動フォーカス設定により金額入力にフォーカス")
     }
     
     private func isValidAmount(_ amountString: String) -> Bool {
@@ -373,32 +394,6 @@ struct InputView: View {
         let visibleCategories = viewModel.getVisibleCategories()
         if selectedCategoryId == 1 && !visibleCategories.isEmpty {
             selectedCategoryId = visibleCategories.first?.id ?? 1
-        }
-    }
-    
-    private func showDoubleTapHintIfNeeded() {
-        // 自動フォーカス設定が有効な場合のみヒントを表示
-        guard autoFocusAfterSave else { return }
-        
-        // 最初の3回のアプリ起動時にヒントを表示
-        let hintShownKey = "doubleTapHintShown"
-        let hintCount = UserDefaults.standard.integer(forKey: hintShownKey)
-        
-        if hintCount < 3 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                withAnimation(.spring(response: 0.5)) {
-                    showDoubleTapHint = true
-                }
-                
-                // 5秒後に自動で非表示
-                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-                    withAnimation(.spring(response: 0.5)) {
-                        showDoubleTapHint = false
-                    }
-                }
-            }
-            
-            UserDefaults.standard.set(hintCount + 1, forKey: hintShownKey)
         }
     }
     
@@ -539,7 +534,6 @@ struct FloatingActionButton: View {
     let isProcessing: Bool
     let keyboardHeight: CGFloat
     let action: () -> Void
-    let doubleTapAction: () -> Void
     
     @AppStorage("autoFocusAfterSave") private var autoFocusAfterSave = true
     

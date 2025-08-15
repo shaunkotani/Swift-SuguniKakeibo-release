@@ -113,7 +113,6 @@ struct CategoryDetailView: View {
                             Text("カテゴリ別集計")
                         }
                     }
-                    .foregroundColor(.blue)
                 }
             }
             .refreshable {

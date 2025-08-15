@@ -7,6 +7,11 @@ struct ExpensesView: View {
     @State private var showingDeleteConfirmation = false
     @State private var expenseToDelete: Expense?
     @Environment(\.accessibilityVoiceOverEnabled) var voiceOverEnabled
+    
+    // 🎯 タブ再選択によるフォーカス制御用（iOS 18未満では代替手段を使用）
+    @State private var searchFieldTrigger = false
+    // 🎹 キーボード表示状態管理
+    @State private var isKeyboardVisible = false
 
     var filteredExpenses: [Expense] {
         let expenses = viewModel.expenses.sorted(by: { $0.date > $1.date })
@@ -145,6 +150,7 @@ struct ExpensesView: View {
                     .onDelete(perform: deleteExpenses)
                 }
                 .listStyle(.plain)
+                .scrollDismissesKeyboard(.immediately) // 🎹 スクロール時にキーボードを閉じる
                 .accessibilityLabel("支出履歴一覧")
                 .overlay {
                     if filteredExpenses.isEmpty && !searchText.isEmpty {
@@ -166,6 +172,31 @@ struct ExpensesView: View {
             .navigationTitle("支出履歴")
             .navigationBarTitleDisplayMode(.automatic)
             .searchable(text: $searchText, prompt: searchPrompt)
+            // 🎯 iOS 18未満では代替手段として検索テキストの強制更新を使用
+            .onChange(of: searchFieldTrigger) { _, _ in
+                // 検索フィールドにフォーカスを当てるための代替手段
+                focusSearchFieldFallback()
+            }
+            // 🎹 キーボード用ツールバー
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    if isKeyboardVisible {
+                        Spacer()
+                        
+                        Button("閉じる") {
+                            hideKeyboard()
+                        }
+                        .foregroundColor(.blue)
+                        .fontWeight(.semibold)
+                    }
+                }
+            }
+            // 🎹 背景タップでキーボードを閉じる
+            .onTapGesture {
+                if isKeyboardVisible {
+                    hideKeyboard()
+                }
+            }
             .accessibilityAction(.escape) {
                 // VoiceOverでエスケープアクションを提供
                 if !searchText.isEmpty {
@@ -207,9 +238,146 @@ struct ExpensesView: View {
                     Text("\(Int(expense.amount))円の支出を削除しますか？この操作は取り消せません。")
                 }
             }
+            // 🎯 タブ再選択通知の監視
+            .onReceive(NotificationCenter.default.publisher(for: .tabReselected)) { notification in
+                // 履歴タブが再選択されたかをチェック
+                if let index = notification.userInfo?["index"] as? Int,
+                   index == 3 { // AppTab.expenses.rawValue
+                    print("🎯 履歴タブ再選択通知を受信")
+                    handleTabReselection()
+                }
+            }
         }
         .onAppear {
             viewModel.fetchExpenses()
+            setupKeyboardObservers()
+        }
+        .onDisappear {
+            removeKeyboardObservers()
+        }
+    }
+    
+    // 🎯 タブ再選択時の処理（iOS 17以下対応版）
+    private func handleTabReselection() {
+        print("🎯 handleTabReselection() 開始")
+        print("🎯 現在の検索テキスト: '\(searchText)'")
+        
+        // iOS 18未満では直接的なフォーカス制御ができないため、
+        // 検索バーのアクティブ化を促す代替手段を使用
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            print("🎯 検索フィールドアクティブ化トリガー")
+            self.searchFieldTrigger.toggle()
+        }
+        
+        // ハプティックフィードバック
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+        
+        print("🔍 タブ再選択により検索フィールドをアクティブ化")
+    }
+    
+    // 🎯 iOS 18未満での検索フィールドフォーカス代替手段
+    private func focusSearchFieldFallback() {
+        print("🎯 focusSearchFieldFallback() 実行")
+        
+        // UIApplication経由でキーボードの表示を試行
+        DispatchQueue.main.async {
+            // 検索バーの親Viewを探してfirstResponderにする試み
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let keyWindow = windowScene.windows.first(where: { $0.isKeyWindow }) {
+                
+                // 検索バーを探してフォーカスを当てる
+                self.findAndFocusSearchBar(in: keyWindow)
+            }
+        }
+    }
+    
+    // 🔍 検索バーを見つけてフォーカスを当てるヘルパー関数
+    private func findAndFocusSearchBar(in view: UIView) {
+        for subview in view.subviews {
+            // UISearchBarまたはUITextFieldを探す
+            if let searchBar = subview as? UISearchBar {
+                searchBar.becomeFirstResponder()
+                print("🎯 UISearchBarにフォーカス設定完了")
+                return
+            } else if let textField = subview as? UITextField,
+                      subview.accessibilityIdentifier?.contains("search") == true ||
+                      textField.placeholder?.contains("検索") == true {
+                textField.becomeFirstResponder()
+                print("🎯 UITextFieldにフォーカス設定完了")
+                return
+            }
+            
+            // 再帰的に子ビューを探索
+            findAndFocusSearchBar(in: subview)
+        }
+    }
+    
+    // MARK: - 🎹 キーボード管理
+    
+    // キーボード表示・非表示の監視設定
+    private func setupKeyboardObservers() {
+        NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillShowNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            withAnimation(.easeOut(duration: 0.3)) {
+                isKeyboardVisible = true
+            }
+            print("🎹 キーボード表示 - ツールバー表示")
+        }
+        
+        NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillHideNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            withAnimation(.easeOut(duration: 0.3)) {
+                isKeyboardVisible = false
+            }
+            print("🎹 キーボード非表示 - ツールバー非表示")
+        }
+    }
+    
+    // キーボード監視の解除
+    private func removeKeyboardObservers() {
+        NotificationCenter.default.removeObserver(
+            self,
+            name: UIResponder.keyboardWillShowNotification,
+            object: nil
+        )
+        NotificationCenter.default.removeObserver(
+            self,
+            name: UIResponder.keyboardWillHideNotification,
+            object: nil
+        )
+        print("🎹 キーボード監視解除")
+    }
+    
+    // キーボードを閉じる
+    private func hideKeyboard() {
+        // 検索フィールドのフォーカスを解除してキーボードを閉じる
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+        
+        // ハプティックフィードバック（軽めに設定）
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+        
+        print("🎹 キーボードを手動で閉じました")
+    }
+    
+    // スクロール開始時の追加処理（必要に応じて）
+    private func handleScrollBegan() {
+        // スクロール開始時にキーボードを閉じる（.scrollDismissesKeyboardと併用）
+        if isKeyboardVisible {
+            print("🎹 スクロール開始によりキーボードを閉じます")
+            hideKeyboard()
         }
     }
     
