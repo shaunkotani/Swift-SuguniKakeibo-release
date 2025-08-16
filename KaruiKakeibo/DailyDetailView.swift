@@ -9,6 +9,7 @@ import SwiftUI
 
 struct DailyDetailView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
+    @Environment(\.dismiss) private var dismiss
     let selectedDate: Date
     @State private var selectedCategoryFilter: Int = -1 // -1 = 全て, その他はカテゴリID
     
@@ -62,42 +63,64 @@ struct DailyDetailView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // ヘッダー情報
-                DailyDetailHeaderView(
-                    selectedDate: selectedDate,
-                    totalAmount: totalAmount,
-                    expenseCount: filteredExpenses.count,
-                    isWeekend: isWeekend,
-                    selectedCategoryName: selectedCategoryFilter == -1 ? nil : availableCategories.first(where: { $0.id == selectedCategoryFilter })?.name
-                )
-                .padding(.horizontal)
-                .padding(.bottom, 16)
-                
-                // カテゴリフィルター
-                if !availableCategories.isEmpty {
-                    CategoryFilterView(
-                        availableCategories: availableCategories,
-                        selectedCategoryFilter: $selectedCategoryFilter,
-                        viewModel: viewModel
+            ZStack {
+                VStack {
+                    // ヘッダー情報
+                    DailyDetailHeaderView(
+                        selectedDate: selectedDate,
+                        totalAmount: totalAmount,
+                        expenseCount: filteredExpenses.count,
+                        isWeekend: isWeekend,
+                        selectedCategoryName: selectedCategoryFilter == -1 ? nil : availableCategories.first(where: { $0.id == selectedCategoryFilter })?.name
                     )
                     .padding(.horizontal)
                     .padding(.bottom, 16)
-                }
-                
-                // 支出履歴リスト
-                List {
-                    ForEach(filteredExpenses) { expense in
-                        DailyDetailRowView(
-                            expense: expense,
-                            categories: viewModel.categories,
-                            showCategory: selectedCategoryFilter == -1,
+                    
+                    // カテゴリフィルター
+                    if !availableCategories.isEmpty {
+                        CategoryFilterView(
+                            availableCategories: availableCategories,
+                            selectedCategoryFilter: $selectedCategoryFilter,
                             viewModel: viewModel
                         )
-                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .padding(.horizontal)
+                        .padding(.bottom, 16)
                     }
+                    
+                    // 支出履歴リスト
+                    List {
+                        ForEach(filteredExpenses) { expense in
+                            DailyDetailRowView(
+                                expense: expense,
+                                categories: viewModel.categories,
+                                showCategory: selectedCategoryFilter == -1,
+                                viewModel: viewModel
+                            )
+                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        }
+                    }
+                    .listStyle(.plain)
                 }
-                .listStyle(.plain)
+                
+                VStack {
+                    Spacer()
+                    Button(action: {
+                        // ハプティックフィードバック
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
+                        
+                        dismiss()
+                    }, label: {
+                        Image(systemName: "xmark")
+                            .foregroundColor(.white)
+                            .font(.system(size: 24))
+                    })
+                    .frame(width: 60, height: 60)
+                    .background(Color.orange)
+                    .cornerRadius(30.0)
+                    .padding(.bottom, 30)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                }
             }
             .navigationTitle("\(shortDateFormatter.string(from: selectedDate))の支出")
             .navigationBarTitleDisplayMode(.inline)

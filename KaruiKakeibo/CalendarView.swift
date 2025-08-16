@@ -1,11 +1,16 @@
 //
-//  CalendarView.swift
+//  CalendarView.swift (自動更新対応版)
 //  Suguni-Kakeibo-2
 //
 //  Created by 大谷駿介 on 2025/07/29.
 //
 
 import SwiftUI
+
+struct CalendarDateItem: Identifiable {
+    let id = UUID()
+    let date: Date
+}
 
 struct CalendarView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
@@ -15,12 +20,16 @@ struct CalendarView: View {
     @State private var selectedMonth = Date()
     @State private var isCalculating = false
     @State private var lastCalculationHash: Int = 0
+    @State private var selectedDate: Date? = nil
+    @State private var showingDetailSheet = false
     
+    @State private var selectedDateItem: CalendarDateItem? = nil
+
     // パフォーマンス最適化用のキャッシュ
     @State private var cachedMonthlyExpenses: [Expense] = []
     @State private var cachedMonth: Date?
     
-    // フォーマッタをキャッシュして再利用
+    // フォーマッターをキャッシュして再利用
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
@@ -85,36 +94,26 @@ struct CalendarView: View {
                 .padding(.horizontal)
                 .padding(.bottom, 16)
                 
-                // 日別リストまたは空状態
-                if !filteredDailyTotals.isEmpty {
-                    List {
-                        ForEach(sortedDailyTotals, id: \.key) { date, total in
-                            NavigationLink(destination: DailyDetailView(selectedDate: stringToDate(date))) {
-                                DailyTotalRowView(date: date, total: total)
-                            }
-                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                        }
-                    }
-                    .listStyle(.plain)
-                    .refreshable {
-                        await refreshData()
-                    }
-                } else if !isCalculating {
-                    CalendarEmptyStateView(
+                // カレンダーグリッド
+                if !isCalculating {
+                    CalendarGridView(
                         selectedMonth: selectedMonth,
-                        monthFormatter: monthFormatter,
-                        onAddExpense: {
-                            navigateToInputTab()
+                        dailyTotals: filteredDailyTotals,
+                        onDateTapped: { date in
+                            print("📅 日付タップ検知: \(date)")
+                            let dateItem = CalendarDateItem(date: date)
+
+                            selectedDateItem = dateItem
+                            print("📅 selectedDateItem設定後: \(selectedDateItem?.date.description ?? "nil")")
+
+                            // ハプティックフィードバックを追加
+                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                            impactFeedback.impactOccurred()
                         }
                     )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .refreshable {
-                        await refreshData()
-                    }
-                }
-                
-                // ローディング状態
-                if isCalculating {
+                    .padding(.horizontal)
+                } else {
+                    // ローディング状態
                     VStack(spacing: 16) {
                         ProgressView()
                             .scaleEffect(1.2)
@@ -125,22 +124,42 @@ struct CalendarView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.clear)
                 }
+                
+                Spacer()
             }
-            .navigationTitle("日別集計")
+            .navigationTitle("支出カレンダー")
+            // 🔥 新規追加: タブ表示時の更新処理
             .onAppear {
-                calculateDailyTotalsIfNeeded()
-            }
-            .onChange(of: viewModel.expenses) { _, newExpenses in
-                // データのハッシュ値を計算して変更を検出
-                let newHash = calculateExpensesHash(newExpenses)
-                if newHash != lastCalculationHash {
-                    clearCache()
-                    calculateDailyTotalsIfNeeded()
-                    lastCalculationHash = newHash
+                print("📅 CalendarView表示開始 - 初期計算実行")
+                Task {
+                    await calculateDailyTotals()
                 }
             }
-            .onChange(of: selectedMonth) { _, _ in
-                calculateDailyTotalsIfNeeded()
+            // 🔥 新規追加: タブ再選択時の更新処理
+            .onReceive(NotificationCenter.default.publisher(for: .tabReselected)) { notification in
+                if let index = notification.userInfo?["index"] as? Int,
+                   index == 0 { // AppTab.calendar.rawValue
+                    print("📅 カレンダータブ再選択 - 強制更新実行")
+                    Task {
+                        await forceRefreshCalendar()
+                    }
+                }
+            }
+            // 🔥 修正: カテゴリ別集計と同じパターンで即座に更新
+            .onChange(of: viewModel.expenses) { oldExpenses, newExpenses in
+                print("📊 支出データ変更検知: \(oldExpenses.count) -> \(newExpenses.count)")
+                
+                // 即座に同期的に更新（カテゴリ別集計と同じパターン）
+                clearCache()
+                calculateDailyTotalsSync()
+                
+                print("📊 即座更新完了")
+            }
+            // 🔥 修正: 月変更時も同期的に更新
+            .onChange(of: selectedMonth) { oldMonth, newMonth in
+                print("📅 選択月変更: \(monthFormatter.string(from: oldMonth)) -> \(monthFormatter.string(from: newMonth))")
+                clearCache()
+                calculateDailyTotalsSync()
             }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -155,53 +174,91 @@ struct CalendarView: View {
                     .disabled(isCalculating)
                 }
             }
-        }
-    }
-    
-    // MARK: - パフォーマンス最適化されたデータ計算
-    private func calculateDailyTotalsIfNeeded() {
-        // 既に計算済みで変更がない場合はスキップ
-        if isCalculating { return }
-        
-        Task {
-            await calculateDailyTotals()
-        }
-    }
-    
-    @MainActor
-    private func calculateDailyTotals() async {
-        isCalculating = true
-        
-        // バックグラウンドで重い計算を実行
-        let result = await withTaskGroup(of: [String: Double].self, returning: [String: Double].self) { group in
-            group.addTask {
-                await self.performDailyCalculation()
+            // シート表示
+            .sheet(item: $selectedDateItem) { dateItem in
+                NavigationStack {
+                    DailyDetailView(selectedDate: dateItem.date)
+                        .environmentObject(viewModel)
+                        .onAppear {
+                            print("📅 DailyDetailView表示開始: \(dateItem.date)")
+                        }
+                }
             }
-            
-            // 最初のタスクの結果を返す
-            if let result = await group.next() {
-                return result
-            }
-            return [:]
         }
-        
-        // メインスレッドで結果を更新
-        dailyTotals = result
-        isCalculating = false
-        
-        print("📅 日別集計計算完了: \(result.count)日分, 月: \(monthFormatter.string(from: selectedMonth))")
     }
     
-    private func performDailyCalculation() async -> [String: Double] {
-        // Dictionary(grouping:)を使用してパフォーマンスを最適化
-        let groupedExpenses = Dictionary(grouping: monthlyExpenses) { expense in
+    // 🔥 修正: キャッシュを使わずに直接計算（カテゴリ別集計と同じパターン）
+    private func calculateDailyTotalsSync() {
+        print("📊 同期的日別集計計算開始: \(monthFormatter.string(from: selectedMonth))")
+        
+        // 🔥 キャッシュを使わず、直接viewModel.expensesから計算
+        let calendar = Calendar.current
+        let targetMonth = calendar.component(.month, from: selectedMonth)
+        let targetYear = calendar.component(.year, from: selectedMonth)
+        
+        // 選択された月の支出をフィルタリング
+        let filteredExpenses = viewModel.expenses.filter { expense in
+            let month = calendar.component(.month, from: expense.date)
+            let year = calendar.component(.year, from: expense.date)
+            return month == targetMonth && year == targetYear
+        }
+        
+        print("📊 対象支出数: \(filteredExpenses.count)件")
+        
+        // Dictionary(grouping:)を使用して日別にグループ化
+        let groupedExpenses = Dictionary(grouping: filteredExpenses) { expense in
             dateFormatter.string(from: expense.date)
         }
         
         // 各日の合計を計算
-        return groupedExpenses.mapValues { expenses in
+        dailyTotals = groupedExpenses.mapValues { expenses in
             expenses.reduce(0) { $0 + $1.amount }
         }
+        
+        print("📊 同期的日別集計計算完了: \(dailyTotals.count)日分")
+        
+        // 計算完了の視覚的フィードバック
+        if !dailyTotals.isEmpty {
+            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+            impactFeedback.impactOccurred()
+        }
+    }
+    
+    private func forceRefreshCalendar() async {
+        print("🔄 カレンダー強制更新開始")
+        clearCache()
+        
+        // ViewModelから最新データを取得
+        viewModel.refreshAllData()
+        
+        // 少し待ってからカレンダーを更新
+        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1秒
+        
+        await calculateDailyTotals()
+        print("🔄 カレンダー強制更新完了")
+    }
+    
+    // 🔥 修正: 非同期版も残しておく（初期表示用）
+    @MainActor
+    private func calculateDailyTotals() async {
+        // 重複計算を防ぐ
+        guard !isCalculating else {
+            print("📊 既に計算中のためスキップ")
+            return
+        }
+        
+        print("📊 非同期日別集計計算開始: \(monthFormatter.string(from: selectedMonth))")
+        isCalculating = true
+        
+        // 🔥 修正: より短い遅延で確実に更新
+        try? await Task.sleep(nanoseconds: 50_000_000) // 0.05秒
+        
+        // 同期的計算を呼び出し
+        clearCache()
+        calculateDailyTotalsSync()
+        
+        isCalculating = false
+        print("📊 非同期日別集計計算完了")
     }
     
     // データのハッシュ値を計算（変更検出用）
@@ -209,11 +266,22 @@ struct CalendarView: View {
         var hasher = Hasher()
         hasher.combine(expenses.count)
         
-        // 最新の10件の支出のIDと金額をハッシュに含める
-        for expense in expenses.prefix(10) {
+        // 月に関連する支出のみをハッシュに含める
+        let calendar = Calendar.current
+        let targetMonth = calendar.component(.month, from: selectedMonth)
+        let targetYear = calendar.component(.year, from: selectedMonth)
+        
+        let relevantExpenses = expenses.filter { expense in
+            let month = calendar.component(.month, from: expense.date)
+            let year = calendar.component(.year, from: expense.date)
+            return month == targetMonth && year == targetYear
+        }
+        
+        for expense in relevantExpenses {
             hasher.combine(expense.id)
             hasher.combine(expense.amount)
             hasher.combine(expense.date.timeIntervalSince1970)
+            hasher.combine(expense.categoryId)
         }
         
         return hasher.finalize()
@@ -222,12 +290,15 @@ struct CalendarView: View {
     private func clearCache() {
         cachedMonthlyExpenses.removeAll()
         cachedMonth = nil
+        print("📊 キャッシュクリア完了")
     }
     
     private func refreshData() async {
+        print("🔄 手動リフレッシュ開始")
         clearCache()
         viewModel.refreshAllData()
         await calculateDailyTotals()
+        print("🔄 手動リフレッシュ完了")
     }
     
     // 文字列をDateに変換するヘルパー関数
@@ -248,6 +319,208 @@ struct CalendarView: View {
         impactFeedback.impactOccurred()
         
         print("📅 カレンダービューから入力画面へ遷移")
+    }
+}
+
+// MARK: - カレンダーグリッドビューは変更なし
+struct CalendarGridView: View {
+    let selectedMonth: Date
+    let dailyTotals: [String: Double]
+    let onDateTapped: (Date) -> Void
+    
+    private let calendar = Calendar.current
+    private let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+    
+    // 曜日のヘッダー
+    private let weekdaySymbols = ["日", "月", "火", "水", "木", "金", "土"]
+    
+    // 月の日付配列を取得
+    private var monthDates: [Date?] {
+        var dates: [Date?] = []
+        
+        // 月の最初の日を取得
+        let startOfMonth = calendar.dateInterval(of: .month, for: selectedMonth)?.start ?? selectedMonth
+        
+        // 月の最初の週の開始日（日曜日）を取得
+        let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: startOfMonth)?.start ?? startOfMonth
+        
+        // 6週間分の日付を生成（42日）
+        for i in 0..<42 {
+            if let date = calendar.date(byAdding: .day, value: i, to: startOfWeek) {
+                // 現在の月の日付のみ追加、それ以外はnil
+                if calendar.isDate(date, equalTo: selectedMonth, toGranularity: .month) {
+                    dates.append(date)
+                } else {
+                    dates.append(nil)
+                }
+            } else {
+                dates.append(nil)
+            }
+        }
+        
+        return dates
+    }
+    
+    // 🎯 最大支出日を計算するプロパティを追加
+    private var maxExpenseDate: String? {
+        guard !dailyTotals.isEmpty else { return nil }
+        return dailyTotals.max { $0.value < $1.value }?.key
+    }
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            // 曜日ヘッダー
+            HStack(spacing: 0) {
+                ForEach(0..<7, id: \.self) { index in
+                    Text(weekdaySymbols[index])
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(index == 0 ? .red : index == 6 ? .blue : .secondary)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.horizontal, 4)
+            
+            // カレンダーグリッド
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 4) {
+                ForEach(0..<monthDates.count, id: \.self) { index in
+                    if let date = monthDates[index] {
+                        CalendarDayView(
+                            date: date,
+                            total: dailyTotals[dateFormatter.string(from: date)] ?? 0,
+                            isToday: calendar.isDateInToday(date),
+                            isMaxExpenseDay: maxExpenseDate == dateFormatter.string(from: date),
+                            onTapped: {
+                                print("📅 CalendarDayView タップ: \(date)")
+                                onDateTapped(date)
+                            }
+                        )
+                    } else {
+                        // 空のセル
+                        Rectangle()
+                            .fill(Color.clear)
+                            .frame(height: 60)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.gray.opacity(0.05))
+                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - その他のビューは変更なし（CalendarDayView, MonthSummaryHeaderView等）
+struct CalendarDayView: View {
+    let date: Date
+    let total: Double
+    let isToday: Bool
+    let isMaxExpenseDay: Bool
+    let onTapped: () -> Void
+    
+    private var dayNumber: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d"
+        return formatter.string(from: date)
+    }
+    
+    private var isWeekend: Bool {
+        let calendar = Calendar.current
+        let weekday = calendar.component(.weekday, from: date)
+        return weekday == 1 || weekday == 7 // 日曜日(1) または 土曜日(7)
+    }
+    
+    private var hasExpense: Bool {
+        return total > 0
+    }
+    
+    private var intensityLevel: Int {
+        // 支出額に応じて強度レベルを決定（0-3）
+        if total == 0 { return 0 }
+        if total < 1000 { return 1 }
+        if total < 5000 { return 2 }
+        return 3
+    }
+    
+    private var cellColor: Color {
+        if !hasExpense { return Color.clear }
+        
+        if isMaxExpenseDay {
+            // 最大支出日は特別なカラーグラデーション
+            return Color.red.opacity(0.5)
+        }
+        
+        switch intensityLevel {
+        case 1: return Color.blue.opacity(0.3)
+        case 2: return Color.blue.opacity(0.6)
+        case 3: return Color.blue.opacity(0.9)
+        default: return Color.clear
+        }
+    }
+    
+    private var textColor: Color {
+        if isToday {
+            return .white
+        } else if isMaxExpenseDay {
+            return .white
+        } else if isWeekend {
+            return intensityLevel >= 2 ? .white : (Calendar.current.component(.weekday, from: date) == 1 ? .red : .blue)
+        } else {
+            return intensityLevel >= 2 ? .white : .primary
+        }
+    }
+    
+    var body: some View {
+        Button(action: onTapped) {
+            VStack(spacing: 2) {
+                // 日付
+                Text(dayNumber)
+                    .font(.headline)
+                    .fontWeight(isToday ? .bold : .medium)
+                    .foregroundColor(textColor)
+                
+                // 支出金額
+                Text("¥\(total, specifier: "%.0f")")
+                    .font(.caption2)
+                    .fontWeight(.medium)
+                    .foregroundColor(textColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity, minHeight: 60)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isToday ? Color.orange : cellColor)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(
+                                isToday ? Color.orange.opacity(0.8) :
+                                    isMaxExpenseDay ? Color.red.opacity(0.8) :
+                                hasExpense ? Color.blue.opacity(0.4) : Color.clear,
+                                lineWidth: isToday || isMaxExpenseDay ? 2 : 1
+                            )
+                    )
+            )
+        }
+        .buttonStyle(CalendarCellButtonStyle())
+        .disabled(false)
+    }
+}
+
+// MARK: - カレンダーセル用ボタンスタイル
+struct CalendarCellButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 
@@ -274,6 +547,15 @@ struct MonthSummaryHeaderView: View {
     
     private var averagePerDay: Double {
         expenseDays > 0 ? totalAmount / Double(expenseDays) : 0
+    }
+    
+    // 🎯 最大支出情報を表示（シンプル版）
+    private var maxExpenseInfo: (date: String, amount: Double)? {
+        guard !dailyTotals.isEmpty else { return nil }
+        if let maxEntry = dailyTotals.max(by: { $0.value < $1.value }) {
+            return (date: maxEntry.key, amount: maxEntry.value)
+        }
+        return nil
     }
     
     var body: some View {
@@ -345,7 +627,7 @@ struct MonthSummaryHeaderView: View {
                         Text("¥\(dailyTotals.values.max() ?? 0, specifier: "%.0f")")
                             .font(.subheadline)
                             .fontWeight(.semibold)
-                            .foregroundColor(.blue)
+                            .foregroundColor(.red)
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -369,82 +651,7 @@ struct MonthSummaryHeaderView: View {
     }
 }
 
-// カレンダー用空状態ビュー
-struct CalendarEmptyStateView: View {
-    let selectedMonth: Date
-    let monthFormatter: DateFormatter
-    let onAddExpense: () -> Void
-    
-    var body: some View {
-        VStack(spacing: 24) {
-            ZStack {
-                Circle()
-                    .fill(Color.gray.opacity(0.1))
-                    .frame(width: 120, height: 120)
-                
-                Image(systemName: "calendar.badge.exclamationmark")
-                    .font(.system(size: 50))
-                    .foregroundColor(.gray.opacity(0.6))
-            }
-            
-            VStack(spacing: 12) {
-                Text("\(monthFormatter.string(from: selectedMonth))の")
-                    .font(.headline)
-                    .foregroundColor(.secondary)
-                
-                Text("支出がありません")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.primary)
-                
-                Text("「入力」タブから支出を追加してください")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-            }
-            
-            
-            
-            // タップ可能な支出追加ボタン
-            Button(action: onAddExpense) {
-                VStack(spacing: 8) {
-                    HStack(spacing: 16) {
-                        Image(systemName: "plus.circle.fill")
-                            .foregroundColor(.blue)
-                            .font(.title2)
-                        Text("支出を追加")
-                            .foregroundColor(.blue)
-                            .fontWeight(.medium)
-                            .font(.headline)
-                    }
-                    
-                    Text("タップで入力画面へ")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.blue.opacity(0.1))
-                        .stroke(Color.blue.opacity(0.3), lineWidth: 1)
-                )
-            }
-            .buttonStyle(PlainButtonStyle())
-            .scaleEffect(1.0)
-            .animation(.easeInOut(duration: 0.1), value: false)
-            .padding(.top, 8)
-            
-            Text("または下にスワイプして更新")
-                .font(.caption2)
-                .foregroundColor(.secondary)
-        }
-        .padding()
-    }
-}
-
-
+// 月選択ビュー
 struct MonthSelectorView: View {
     @Binding var selectedMonth: Date
     
@@ -497,116 +704,5 @@ struct MonthSelectorView: View {
         .padding(.vertical, 8)
         .background(Color.gray.opacity(0.1))
         .cornerRadius(10)
-    }
-}
-
-struct DailyTotalRowView: View {
-    let date: String
-    let total: Double
-    
-    private let inputFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter
-    }()
-    
-    private let outputFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "M月d日(E)"
-        formatter.locale = Locale(identifier: "ja_JP")
-        return formatter
-    }()
-    
-    private let dayFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "E"
-        formatter.locale = Locale(identifier: "ja_JP")
-        return formatter
-    }()
-    
-    private func formatDate(_ dateString: String) -> String {
-        if let date = inputFormatter.date(from: dateString) {
-            return outputFormatter.string(from: date)
-        }
-        return dateString
-    }
-    
-    private func getDayOfWeek(_ dateString: String) -> String {
-        if let date = inputFormatter.date(from: dateString) {
-            return dayFormatter.string(from: date)
-        }
-        return ""
-    }
-    
-    private var isWeekend: Bool {
-        let dayOfWeek = getDayOfWeek(date)
-        return dayOfWeek == "土" || dayOfWeek == "日"
-    }
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            // 日付アイコン（最適化済み）
-            VStack(spacing: 2) {
-                if let dateObject = inputFormatter.date(from: date) {
-                    Text("\(Calendar.current.component(.day, from: dateObject))")
-                        .font(.headline)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
-                    Text(getDayOfWeek(date))
-                        .font(.caption2)
-                        .foregroundColor(.white)
-                } else {
-                    Image(systemName: "calendar")
-                        .font(.title2)
-                        .foregroundColor(.white)
-                }
-            }
-            .frame(width: 40, height: 40)
-            .background(isWeekend ? Color.red : Color.blue)
-            .clipShape(Circle())
-            
-            // 日付情報
-            VStack(alignment: .leading, spacing: 4) {
-                Text(formatDate(date))
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                
-                HStack(spacing: 4) {
-                    Text(date)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Text("・")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Text("タップして詳細を表示")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            
-            Spacer()
-            
-            // 金額と矢印
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("¥\(total, specifier: "%.0f")")
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.primary)
-                
-                HStack(spacing: 4) {
-                    Text("詳細")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-        }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 4)
-        .contentShape(Rectangle())
     }
 }
