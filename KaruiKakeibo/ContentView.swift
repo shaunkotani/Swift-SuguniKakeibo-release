@@ -163,24 +163,38 @@ struct TabBarControllerRepresentable: UIViewControllerRepresentable {
         func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
             print("🔄 shouldSelect 呼び出し")
             
+            // インデックスを取得
+            guard let viewControllers = tabBarController.viewControllers,
+                  let newIndex = viewControllers.firstIndex(where: { $0 === viewController }) else {
+                return true
+            }
+            
             // 現在選択中のVCと、これから選択しようとしているVCが同一なら「再選択」
             if tabBarController.selectedViewController === viewController {
                 print("🔥 タブ再選択を検出")
+                print("📱 再選択されたタブインデックス: \(newIndex)")
                 
-                // インデックスを特定
-                if let viewControllers = tabBarController.viewControllers,
-                   let index = viewControllers.firstIndex(where: { $0 === viewController }) {
-                    print("📱 再選択されたタブインデックス: \(index)")
-                    
-                    // 通知を送信
-                    NotificationCenter.default.post(
-                        name: .tabReselected,
-                        object: nil,
-                        userInfo: ["index": index]
-                    )
+                // 🆕 タブ別の再選択時ハプティックフィードバック
+                //                generateTabReselectionHaptic(for: newIndex)
+                if newIndex == 2 || newIndex == 3 {
+                    let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
+                    impactFeedback.impactOccurred()
                 }
+                // 通知を送信
+                NotificationCenter.default.post(
+                    name: .tabReselected,
+                    object: nil,
+                    userInfo: ["index": newIndex]
+                )
             } else {
                 print("🔄 通常のタブ選択")
+                
+                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                impactFeedback.impactOccurred()
+                
+                // 🆕 タブ別の選択時ハプティックフィードバック
+//                generateTabSelectionHaptic(for: newIndex)
+                
             }
             
             return true // 選択自体は許可
@@ -189,6 +203,86 @@ struct TabBarControllerRepresentable: UIViewControllerRepresentable {
         func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
             if let index = tabBarController.viewControllers?.firstIndex(where: { $0 === viewController }) {
                 print("🏷️ タブ選択完了: index \(index)")
+                // 選択完了時の処理（必要に応じて）
+//                generateTabSelectionCompleteHaptic(for: index)
+            }
+        }
+        // 🆕 タブ再選択時のハプティックフィードバック
+        private func generateTabReselectionHaptic(for index: Int) {
+            switch index {
+            case 0: // カレンダータブ
+                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                impactFeedback.impactOccurred()
+                print("📅 カレンダータブ再選択 - medium haptic")
+                
+            case 1: // カテゴリ集計タブ
+                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                impactFeedback.impactOccurred()
+                print("📊 カテゴリ集計タブ再選択 - medium haptic")
+                
+            case 2: // 入力タブ
+                let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
+                impactFeedback.impactOccurred()
+                print("💰 入力タブ再選択 - heavy haptic")
+                
+            case 3: // 履歴タブ
+                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                impactFeedback.impactOccurred()
+                print("📋 履歴タブ再選択 - medium haptic")
+                
+            case 4: // 設定タブ
+                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                impactFeedback.impactOccurred()
+                print("⚙️ 設定タブ再選択 - light haptic")
+                
+            default:
+                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                impactFeedback.impactOccurred()
+            }
+        }
+        // 🆕 通常のタブ選択時のハプティックフィードバック
+        private func generateTabSelectionHaptic(for index: Int) {
+            switch index {
+            case 0: // カレンダータブ
+                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                impactFeedback.impactOccurred()
+                print("📅 カレンダータブ選択 - light haptic")
+                
+            case 1: // カテゴリ集計タブ
+                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                impactFeedback.impactOccurred()
+                print("📊 カテゴリ集計タブ選択 - light haptic")
+                
+            case 2: // 入力タブ
+                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                impactFeedback.impactOccurred()
+                print("💰 入力タブ選択 - medium haptic")
+                
+            case 3: // 履歴タブ
+                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                impactFeedback.impactOccurred()
+                print("📋 履歴タブ選択 - light haptic")
+                
+            case 4: // 設定タブ
+                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                impactFeedback.impactOccurred()
+                print("⚙️ 設定タブ選択 - light haptic")
+                
+            default:
+                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                impactFeedback.impactOccurred()
+            }
+        }
+        // 🆕 選択完了時のハプティックフィードバック（オプション）
+        private func generateTabSelectionCompleteHaptic(for index: Int) {
+            // より細かい制御が必要な場合のみ使用
+            // 例：特定のタブでのみ追加フィードバック
+            if index == 2 { // 入力タブの場合のみ
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    let selectionFeedback = UISelectionFeedbackGenerator()
+                    selectionFeedback.selectionChanged()
+                    print("💰 入力タブ選択完了 - selection feedback")
+                }
             }
         }
     }

@@ -58,9 +58,14 @@ struct InputView: View {
                 
                 // 日付と時刻を同時に選択できるように変更
                 Section(header: Text("日付と時刻")) {
-                    DatePicker("日時を選択", selection: $date, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
-                        .datePickerStyle(.compact)
-                        .environment(\.locale, Locale(identifier: "ja_JP"))
+                    VStack(spacing: 12) {
+                        DatePicker("日時を選択", selection: $date, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
+                            .datePickerStyle(.compact)
+                            .environment(\.locale, Locale(identifier: "ja_JP"))
+                        CurrentTimeButtonView(date: $date)
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 }
                 
                 Section(header: Text("カテゴリ")) {
@@ -313,6 +318,8 @@ struct InputView: View {
         print("🎯 handleTabReselection() 開始")
         print("🎯 現在のフォーカス状態 - amount: \(isAmountFocused), note: \(isNoteFocused)")
         
+        scrollToTop()
+        
         // 全てのフォーカスを一旦解除
         isAmountFocused = false
         isNoteFocused = false
@@ -342,6 +349,8 @@ struct InputView: View {
         print("🎯 handleExternalFocusRequest() 開始")
         print("🎯 現在のフォーカス状態 - amount: \(isAmountFocused), note: \(isNoteFocused)")
         
+        scrollToTop()
+        
         // 全てのフォーカスを一旦解除
         isAmountFocused = false
         isNoteFocused = false
@@ -366,10 +375,44 @@ struct InputView: View {
         print("💰 外部要求により金額入力フィールドにフォーカス")
     }
     
+    private func scrollToTop() {
+        print("⬆️ 画面を最上部にスクロール開始")
+        
+        // UIScrollViewを探してスクロール位置をリセット
+        DispatchQueue.main.async {
+            guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                  let keyWindow = windowScene.windows.first(where: { $0.isKeyWindow }) else {
+                print("⬆️ キーウィンドウが見つかりません")
+                return
+            }
+            
+            // NavigationStackまたはScrollView、List等のスクロール可能なビューを探す
+            findAndScrollToTop(in: keyWindow)
+        }
+    }
+    
+    // 🆕 再帰的にScrollViewを探してスクロール位置をリセットする関数
+    private func findAndScrollToTop(in view: UIView) {
+        // UIScrollViewまたはその派生クラスを探す
+        for subview in view.subviews {
+            if let scrollView = subview as? UIScrollView {
+                // アニメーション付きで最上部にスクロール
+                scrollView.setContentOffset(CGPoint(x: 0, y: -scrollView.adjustedContentInset.top), animated: true)
+                print("⬆️ ScrollViewを最上部にスクロール完了")
+                return
+            }
+            
+            // 再帰的に子ビューを検索
+            findAndScrollToTop(in: subview)
+        }
+    }
+    
     // 自動フォーカス用の関数（設定に依存）
     private func focusAmountField() {
         // 設定で無効になっている場合は何もしない
         guard autoFocusAfterSave else { return }
+        
+        scrollToTop()
         
         handleExternalFocusRequest()
         print("⚙️ 自動フォーカス設定により金額入力にフォーカス")
@@ -780,5 +823,52 @@ struct InputView_Previews: PreviewProvider {
     static var previews: some View {
         InputView()
             .environmentObject(ExpenseViewModel())
+    }
+}
+
+// MARK: - 🕒 現在時刻ボタンのビュー
+
+struct CurrentTimeButtonView: View {
+    @Binding var date: Date
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Spacer()
+            
+            Button(action: {
+                // 現在時刻に設定
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    date = Date()
+                }
+                
+                // ハプティックフィードバック
+                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                impactFeedback.impactOccurred()
+                
+                print("🕒 現在時刻に設定: \(date)")
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.caption)
+                    Text("現在時刻に設定")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                }
+                .foregroundColor(.blue)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.blue.opacity(0.1))
+                        .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+            .scaleEffect(1.0)
+            .animation(.easeInOut(duration: 0.1), value: false)
+            
+            Spacer()
+        }
+        .padding(.top, 4)
     }
 }
