@@ -146,29 +146,30 @@ struct InputView: View {
                 
                 ToolbarItemGroup(placement: .keyboard) {
                     // 金額入力用のツールバー
-                    HStack {
-                        if isAmountFocused {
-                            // よく使う金額のショートカット
-                            ForEach([100, 500, 1000], id: \.self) { value in
-                                Button("\(value)円") {
-                                    amount = String(value)
-                                    // ハプティックフィードバック
-                                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                                    impactFeedback.impactOccurred()
-                                }
-                                .font(.caption)
-                                .foregroundColor(.blue)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.blue.opacity(0.1))
-                                .cornerRadius(6)
-                            }
-                            Spacer()
-                        }
-                        Spacer()
-                    }
-                    .frame(minHeight: 32)   // 最小の高さを確保
-                    
+//                    HStack {
+//                        if isAmountFocused {
+//                            // よく使う金額のショートカット
+//                            ForEach([100, 500, 1000], id: \.self) { value in
+//                                Button("\(value)円") {
+//                                    amount = String(value)
+//                                    // ハプティックフィードバック
+//                                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+//                                    impactFeedback.impactOccurred()
+//                                }
+//                                .font(.caption)
+//                                .foregroundColor(.blue)
+//                                .padding(.horizontal, 6)
+//                                .padding(.vertical, 2)
+//                                .background(Color.blue.opacity(0.1))
+//                                .cornerRadius(6)
+//                            }
+//                            Spacer()
+//                        }
+//                        Spacer()
+//                    }
+//                    .frame(minHeight: 32)   // 最小の高さを確保
+//
+                    Spacer()
                     Button("閉じる") {
                         hideKeyboard()
                     }

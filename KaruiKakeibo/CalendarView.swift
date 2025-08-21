@@ -161,19 +161,19 @@ struct CalendarView: View {
                 clearCache()
                 calculateDailyTotalsSync()
             }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        Task {
-                            await refreshData()
-                        }
-                    }) {
-                        Image(systemName: "arrow.clockwise")
-                            .foregroundColor(.blue)
-                    }
-                    .disabled(isCalculating)
-                }
-            }
+//            .toolbar {
+//                ToolbarItem(placement: .navigationBarTrailing) {
+//                    Button(action: {
+//                        Task {
+//                            await refreshData()
+//                        }
+//                    }) {
+//                        Image(systemName: "arrow.clockwise")
+//                            .foregroundColor(.blue)
+//                    }
+//                    .disabled(isCalculating)
+//                }
+//            }
             // シート表示
             .sheet(item: $selectedDateItem) { dateItem in
                 NavigationStack {
