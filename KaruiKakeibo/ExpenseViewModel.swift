@@ -23,9 +23,38 @@ class ExpenseViewModel: ObservableObject {
     // 削除済みカテゴリのキャッシュ
     private var deletedCategoriesCache: [Int: FullCategory] = [:]
     
+    // 通知管理
+    private let notificationManager = NotificationManager.shared
+    
     init() {
         // 同期的に初期化
         loadInitialData()
+        
+        // 通知の初期化
+        initializeNotifications()
+    }
+    
+    // MARK: - 通知管理
+    private func initializeNotifications() {
+        // 通知権限の確認
+        notificationManager.checkPermission()
+        
+        // 通知が有効な場合はスケジュール
+        if notificationManager.isNotificationEnabled && notificationManager.hasPermission {
+            notificationManager.scheduleNotifications()
+        }
+        
+        print("📱 通知機能を初期化しました")
+    }
+    
+    // 支出追加時に通知をリセット（翌日分の通知を再スケジュール）
+    func handleExpenseAdded() {
+        if notificationManager.isNotificationEnabled && notificationManager.hasPermission {
+            // 通知を再スケジュールして翌日分を確実にセット
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.notificationManager.scheduleNotifications()
+            }
+        }
     }
     
     // MARK: - 初期データロード
@@ -264,6 +293,9 @@ class ExpenseViewModel: ObservableObject {
                     self.expenses = updatedExpenses
                     self.errorMessage = nil
                     print("✅ 支出を正常に追加しました: ID=\(expense.id)")
+                    
+                    // 支出追加後の通知処理
+                    self.handleExpenseAdded()
                 }
             }
         }

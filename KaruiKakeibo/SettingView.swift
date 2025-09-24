@@ -14,6 +14,7 @@ struct SettingView: View {
     @AppStorage("autoFocusAfterSave") private var autoFocusAfterSave = false
     @State private var showingExportView = false
     @State private var showingCategoryManagement = false
+    @State private var showingNotificationSettings = false
     @State private var showingResetCategoriesAlert = false
     @State private var showingResetSettingsAlert = false
     @State private var isResetingCategories = false
@@ -32,6 +33,24 @@ struct SettingView: View {
                             .padding(.top, 4)
                     }
                     .padding(.vertical, 4)
+                }
+                
+                // 通知設定セクション
+                Section(header: Text("通知")) {
+                    Button(action: {
+                        // ハプティックフィードバック
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
+                        showingNotificationSettings = true
+                    }) {
+                        CategoryManagementButtonView(
+                            icon: "bell.circle",
+                            title: "通知設定",
+                            subtitle: "毎日の支出記録リマインダー設定",
+                            color: .blue
+                        )
+                    }
+                    .buttonStyle(ResponsiveButtonStyle())
                 }
                 
 //                Section(header: Text("通貨設定")) {
@@ -291,6 +310,9 @@ struct SettingView: View {
 //                    .fontWeight(.semibold)
 //                }
 //            }
+            .sheet(isPresented: $showingNotificationSettings) {
+                NotificationSettingsView()
+            }
             .sheet(isPresented: $showingExportView) {
                 CSVExportView()
                     .environmentObject(viewModel)

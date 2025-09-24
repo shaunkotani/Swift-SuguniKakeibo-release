@@ -6,13 +6,33 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		75DDDC232E844CFC009F3CC3 /* UserNotificationsUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 75DDDC212E844CFC009F3CC3 /* UserNotificationsUI.framework */; };
+		75DDDC242E844CFC009F3CC3 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 75DDDC222E844CFC009F3CC3 /* UserNotifications.framework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
+		75DDDC212E844CFC009F3CC3 /* UserNotificationsUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotificationsUI.framework; path = System/Library/Frameworks/UserNotificationsUI.framework; sourceTree = SDKROOT; };
+		75DDDC222E844CFC009F3CC3 /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
 		75DE25782E38A4F5006B00C6 /* かるい家計簿！.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "かるい家計簿！.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		75DDDC2A2E84507C009F3CC3 /* Exceptions for "KaruiKakeibo" folder in "かるい家計簿！" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 75DE25772E38A4F5006B00C6 /* かるい家計簿！ */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		75DE257A2E38A4F5006B00C6 /* KaruiKakeibo */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				75DDDC2A2E84507C009F3CC3 /* Exceptions for "KaruiKakeibo" folder in "かるい家計簿！" target */,
+			);
 			path = KaruiKakeibo;
 			sourceTree = "<group>";
 		};
@@ -23,16 +43,28 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				75DDDC232E844CFC009F3CC3 /* UserNotificationsUI.framework in Frameworks */,
+				75DDDC242E844CFC009F3CC3 /* UserNotifications.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		75DDDC202E844CFC009F3CC3 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				75DDDC222E844CFC009F3CC3 /* UserNotifications.framework */,
+				75DDDC212E844CFC009F3CC3 /* UserNotificationsUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		75DE256F2E38A4F5006B00C6 = {
 			isa = PBXGroup;
 			children = (
 				75DE257A2E38A4F5006B00C6 /* KaruiKakeibo */,
+				75DDDC202E844CFC009F3CC3 /* Frameworks */,
 				75DE25792E38A4F5006B00C6 /* Products */,
 			);
 			sourceTree = "<group>";
