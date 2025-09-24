@@ -14,6 +14,8 @@ class ExpenseViewModel: ObservableObject {
     @Published var fullCategories: [FullCategory] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    // 入力画面に事前設定する日付（他画面からの指示用）
+    @Published var pendingInputDate: Date? = nil
     
     // データ操作中フラグ
     private var isOperating = false
@@ -488,3 +490,4 @@ extension ExpenseViewModel {
         print("========================")
     }
 }
+

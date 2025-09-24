@@ -100,24 +100,95 @@ struct DailyDetailView: View {
                         }
                     }
                     .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.clear)
                 }
                 
                 VStack {
                     Spacer()
-                    Button(action: {
-                        // ハプティックフィードバック
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                        impactFeedback.impactOccurred()
-                        
-                        dismiss()
-                    }, label: {
-                        Image(systemName: "xmark")
-                            .foregroundColor(.white)
-                            .font(.system(size: 24))
-                    })
-                    .frame(width: 60, height: 60)
-                    .background(Color.orange)
-                    .cornerRadius(30.0)
+                    HStack(spacing: 16) {
+                        if #available(iOS 26.0, *) {
+                            Button(action: {
+                                // この日に追加: 入力タブへ遷移し、日付を12:00で設定
+                                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                                impactFeedback.impactOccurred()
+                                
+                                // 12:00 に補正
+                                let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: selectedDate) ?? selectedDate
+                                
+                                // ViewModelへ指示
+                                viewModel.pendingInputDate = noon
+                                
+                                // 入力タブへ遷移を通知（タブ選択はContentViewのバインディング経由のため通知で指示）
+                                NotificationCenter.default.post(name: .switchTab, object: nil, userInfo: ["index": 2])
+                                
+                                // 画面を閉じる
+                                dismiss()
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 20))
+                                    Text("この日に追加")
+                                        .fontWeight(.semibold)
+                                }
+                                .frame(width: 200, height: 48)
+                            }
+                            .buttonStyle(.glassProminent)
+                            
+                            Button(action: {
+                                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                                impactFeedback.impactOccurred()
+                                dismiss()
+                            }) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 20))
+                                    .frame(width: 48, height: 48)
+                            }
+                            .buttonStyle(.glass)
+                        } else {
+                            Button(action: {
+                                // この日に追加: 入力タブへ遷移し、日付を12:00で設定
+                                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                                impactFeedback.impactOccurred()
+                                
+                                // 12:00 に補正
+                                let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: selectedDate) ?? selectedDate
+                                
+                                // ViewModelへ指示
+                                viewModel.pendingInputDate = noon
+                                
+                                // 入力タブへ遷移を通知（タブ選択はContentViewのバインディング経由のため通知で指示）
+                                NotificationCenter.default.post(name: .switchTab, object: nil, userInfo: ["index": 2])
+                                
+                                // 画面を閉じる
+                                dismiss()
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 20))
+                                    Text("この日に追加")
+                                        .fontWeight(.semibold)
+                                }
+                                .foregroundColor(.white)
+                                .background(Color.blue)
+                                .cornerRadius(24)
+                                .frame(width: 200, height: 48)
+                            }
+                            
+                            Button(action: {
+                                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                                impactFeedback.impactOccurred()
+                                dismiss()
+                            }) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.white)
+                                    .background(Color.orange)
+                                    .cornerRadius(24)
+                                    .frame(width: 48, height: 48)
+                            }
+                        }
+                    }
                     .padding(.bottom, 30)
                     .frame(maxWidth: .infinity, alignment: .center)
                 }
@@ -224,60 +295,111 @@ struct DailyDetailHeaderView: View {
                 Spacer()
             }
             
-            // 統計情報
-            HStack(spacing: 0) {
-                // 合計金額
-                VStack(spacing: 4) {
-                    Text("合計金額")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text("¥\(totalAmount, specifier: "%.0f")")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundColor(isWeekend ? .red : .blue)
+            if #available(iOS 26.0, *) {
+                HStack(spacing: 0) {
+                    // 合計金額
+                    VStack(spacing: 4) {
+                        Text("合計金額")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("¥\(totalAmount, specifier: "%.0f")")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    // 区切り線
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 1, height: 40)
+                    
+                    // 支出回数
+                    VStack(spacing: 4) {
+                        Text("支出回数")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(expenseCount)回")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    // 区切り線
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 1, height: 40)
+                    
+                    // 平均金額
+                    VStack(spacing: 4) {
+                        Text("平均金額")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("¥\(expenseCount > 0 ? totalAmount / Double(expenseCount) : 0, specifier: "%.0f")")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
-                
-                // 区切り線
-                Rectangle()
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: 1, height: 40)
-                
-                // 支出回数
-                VStack(spacing: 4) {
-                    Text("支出回数")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text("\(expenseCount)回")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundColor(isWeekend ? .red : .blue)
+                .padding()
+                .glassEffect(.regular.tint(isWeekend ? .red : .blue).interactive(), in: .rect(cornerRadius: 12))
+            } else {
+                HStack(spacing: 0) {
+                    // 合計金額
+                    VStack(spacing: 4) {
+                        Text("合計金額")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("¥\(totalAmount, specifier: "%.0f")")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    // 区切り線
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 1, height: 40)
+                    
+                    // 支出回数
+                    VStack(spacing: 4) {
+                        Text("支出回数")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(expenseCount)回")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    // 区切り線
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 1, height: 40)
+                    
+                    // 平均金額
+                    VStack(spacing: 4) {
+                        Text("平均金額")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("¥\(expenseCount > 0 ? totalAmount / Double(expenseCount) : 0, specifier: "%.0f")")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
-                
-                // 区切り線
-                Rectangle()
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: 1, height: 40)
-                
-                // 平均金額
-                VStack(spacing: 4) {
-                    Text("平均金額")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text("¥\(expenseCount > 0 ? totalAmount / Double(expenseCount) : 0, specifier: "%.0f")")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundColor(isWeekend ? .red : .blue)
-                }
-                .frame(maxWidth: .infinity)
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill((isWeekend ? Color.red : Color.blue).opacity(0.1))
+                        .stroke((isWeekend ? Color.red : Color.blue).opacity(0.3), lineWidth: 1)
+                )
             }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill((isWeekend ? Color.red : Color.blue).opacity(0.1))
-                    .stroke((isWeekend ? Color.red : Color.blue).opacity(0.3), lineWidth: 1)
-            )
         }
     }
 }

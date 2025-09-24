@@ -19,6 +19,7 @@ struct InputView: View {
     @State private var showSuccessMessage = false
     @State private var isProcessing = false
     @State private var keyboardHeight: CGFloat = 0
+    @State private var showFloatingButton: Bool = true
     @FocusState private var isAmountFocused: Bool
     @FocusState private var isNoteFocused: Bool
     
@@ -29,6 +30,52 @@ struct InputView: View {
     init(shouldFocusAmount: Binding<Bool> = .constant(false)) {
         self._shouldFocusAmount = shouldFocusAmount
     }
+    
+    // MARK: - 分割: キーボードツールバーのビュー
+    @ViewBuilder
+    private func keyboardToolbarView() -> some View {
+        if amount.isEmpty {
+            Spacer()
+            Button("閉じる") {
+                hideKeyboard()
+            }
+            .foregroundColor(.blue)
+            .fontWeight(.semibold)
+        } else {
+            Button("閉じる") {
+                hideKeyboard()
+            }
+            .foregroundColor(.blue)
+            .fontWeight(.semibold)
+
+            Spacer()
+
+            SaveOnKeyboardButton(isButtonEnabled: isButtonEnabled, isProcessing: isProcessing, action: saveExpense)
+        }
+    }
+
+    // MARK: - 分割: 成功メッセージのオーバーレイ
+    @ViewBuilder
+    private var successOverlay: some View {
+        VStack {
+            if showSuccessMessage {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                    Text("支出を保存しました")
+                        .foregroundColor(.white)
+                }
+                .padding()
+                .background(Color.green.opacity(0.9))
+                .cornerRadius(10)
+                .padding(.horizontal)
+                .transition(.scale.combined(with: .opacity))
+                .shadow(radius: 4)
+            }
+            Spacer()
+        }
+        .allowsHitTesting(false)
+    }
 
     var body: some View {
         NavigationStack {
@@ -38,7 +85,8 @@ struct InputView: View {
                         Text("¥")
                             .foregroundColor(.secondary)
                         TextField("0", text: $amount)
-                            .keyboardType(.decimalPad)
+                            .keyboardType(.numberPad)
+                            .submitLabel(.done)
                             .font(.title2)
                             .fontWeight(.medium)
                             .focused($isAmountFocused)
@@ -58,11 +106,51 @@ struct InputView: View {
                 
                 // 日付と時刻を同時に選択できるように変更
                 Section(header: Text("日付と時刻")) {
-                    VStack(spacing: 12) {
-                        DatePicker("日時を選択", selection: $date, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            if let status = dateStatusText {
+                                HStack(spacing: 6) {
+                                    Image(systemName: status.symbol)
+                                    Text(status.text)
+                                }
+                                .font(.caption)
+                                .foregroundColor(status.color)
+                                .padding(.vertical, 6)
+                                .padding(.horizontal, 10)
+                                .background(
+                                    Capsule()
+                                        .fill(status.color.opacity(0.1))
+                                )
+                            }
+                            Spacer()
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    date = Date()
+                                }
+                                let impact = UIImpactFeedbackGenerator(style: .light)
+                                impact.impactOccurred()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "clock.arrow.circlepath")
+                                    Text("今に戻す")
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule().fill(Color.blue.opacity(0.1))
+                            )
+                            .buttonStyle(.plain)
+                            .disabled(isNearNow)
+                            .opacity(isNearNow ? 0.5 : 1.0)
+                        }
+
+                        DatePicker("", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                            .labelsHidden()
                             .datePickerStyle(.compact)
                             .environment(\.locale, Locale(identifier: "ja_JP"))
-                        CurrentTimeButtonView(date: $date)
                     }
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
@@ -145,49 +233,26 @@ struct InputView: View {
                 }
                 
                 ToolbarItemGroup(placement: .keyboard) {
-                    // 金額入力用のツールバー
-//                    HStack {
-//                        if isAmountFocused {
-//                            // よく使う金額のショートカット
-//                            ForEach([100, 500, 1000], id: \.self) { value in
-//                                Button("\(value)円") {
-//                                    amount = String(value)
-//                                    // ハプティックフィードバック
-//                                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-//                                    impactFeedback.impactOccurred()
-//                                }
-//                                .font(.caption)
-//                                .foregroundColor(.blue)
-//                                .padding(.horizontal, 6)
-//                                .padding(.vertical, 2)
-//                                .background(Color.blue.opacity(0.1))
-//                                .cornerRadius(6)
-//                            }
-//                            Spacer()
-//                        }
-//                        Spacer()
-//                    }
-//                    .frame(minHeight: 32)   // 最小の高さを確保
-//
-                    Spacer()
-                    Button("閉じる") {
-                        hideKeyboard()
-                    }
-                    .foregroundColor(.blue)
-                    .fontWeight(.semibold)
+                    keyboardToolbarView()
                 }
             }
-            // フロートボタンを追加
+            .onSubmit {
+                if isButtonEnabled && !isProcessing {
+                    saveExpense()
+                }
+            }
+            // フロートボタン（キーボード非表示時のみ、タブバー直上に安定表示）
             .safeAreaInset(edge: .bottom) {
-                FloatingActionButton(
-                    isButtonEnabled: isButtonEnabled,
-                    isProcessing: isProcessing,
-                    keyboardHeight: keyboardHeight,
-                    action: saveExpense
-                )
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+                if showFloatingButton {
+                    FloatingActionButton(
+                        isButtonEnabled: isButtonEnabled,
+                        isProcessing: isProcessing,
+                        action: saveExpense
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
             .alert(isPresented: $showAlert) {
                 Alert(
@@ -197,39 +262,17 @@ struct InputView: View {
                 )
             }
             .overlay(
-                // 成功メッセージ
-                VStack {
-                    if showSuccessMessage {
-                        HStack {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
-                            Text("支出を保存しました")
-                                .foregroundColor(.white)
-                        }
-                        .padding()
-                        .background(Color.green.opacity(0.9))
-                        .cornerRadius(10)
-                        .padding(.horizontal)
-                        .transition(.scale.combined(with: .opacity))
-                        .shadow(radius: 4)
-                    }
-                    Spacer()
-                }
-                .allowsHitTesting(false)
+                successOverlay
             )
-            // 背景タップでキーボードを閉じる
-            .contentShape(Rectangle())
-            .simultaneousGesture(
-                TapGesture(count: 1)
-                    .onEnded { _ in
-                        if isAmountFocused || isNoteFocused {
-                            hideKeyboard()
-                        }
-                    }
-            )
+            // 背景タップでキーボードを閉じる 削除しました
+            
             .onAppear {
                 setupInitialCategory()
-                setupKeyboardObservers()
+                if let presetDate = viewModel.pendingInputDate {
+                    let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: presetDate) ?? presetDate
+                    date = noon
+                    viewModel.pendingInputDate = nil
+                }
             }
             .onChange(of: shouldFocusAmount) { oldValue, newValue in
                 print("🎯 InputView shouldFocusAmount 変更: \(oldValue) -> \(newValue)")
@@ -251,6 +294,47 @@ struct InputView: View {
                     handleTabReselection()
                 }
             }
+            .onReceive(viewModel.$pendingInputDate) { newValue in
+                if let presetDate = newValue {
+                    let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: presetDate) ?? presetDate
+                    date = noon
+                    // 金額にフォーカスを当てる
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        isAmountFocused = true
+                    }
+                    // 一度適用したらクリア
+                    viewModel.pendingInputDate = nil
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
+                guard
+                    let userInfo = notification.userInfo,
+                    let endFrameValue = userInfo[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue,
+                    let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                    let keyWindow = windowScene.windows.first(where: { $0.isKeyWindow })
+                else { return }
+                let endFrame = endFrameValue.cgRectValue
+                // 画面下端からキーボード上端までの重なり量
+                let overlap = max(0, keyWindow.bounds.maxY - endFrame.minY)
+                withAnimation(.easeOut(duration: 0.25)) {
+                    keyboardHeight = overlap
+                }
+                if overlap >= 10 {
+                    showFloatingButton = false
+                } else {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                        showFloatingButton = true
+                    }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                withAnimation(.easeOut(duration: 0.25)) {
+                    keyboardHeight = 0
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                    showFloatingButton = true
+                }
+            }
         }
     }
     
@@ -264,29 +348,40 @@ struct InputView: View {
         return hasAmount && isValidAmountValue && hasVisibleCategories && notProcessing
     }
     
-    // MARK: - キーボード監視の設定
-    private func setupKeyboardObservers() {
-        NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillShowNotification,
-            object: nil,
-            queue: .main
-        ) { notification in
-            if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
-                withAnimation(.easeOut(duration: 0.3)) {
-                    keyboardHeight = keyboardFrame.height
-                }
-            }
+    // MARK: - 日付ステータス表示用の判定・フォーマッタ
+    private var isToday: Bool {
+        Calendar.current.isDateInToday(date)
+    }
+    
+    private var isNearNow: Bool {
+        // 閾値: 15分以内かつ今日
+        abs(date.timeIntervalSinceNow) < 15 * 60 && isToday
+    }
+    
+    private var dateStatusText: (text: String, color: Color, symbol: String)? {
+        if !isToday {
+            let formatted = shortFormatter.string(from: date)
+            return ("別日 \(formatted)", .orange, "calendar.badge.exclamationmark")
+        } else if !isNearNow {
+            let timeStr = timeFormatter.string(from: date)
+            return ("今日 \(timeStr)", .yellow, "exclamationmark.triangle.fill")
+        } else {
+            return ("現在", .green, "checkmark.circle.fill")
         }
-        
-        NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillHideNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            withAnimation(.easeOut(duration: 0.3)) {
-                keyboardHeight = 0
-            }
-        }
+    }
+    
+    private var shortFormatter: DateFormatter {
+        let f = DateFormatter()
+        f.dateFormat = "M/d HH:mm"
+        f.locale = Locale(identifier: "ja_JP")
+        return f
+    }
+    
+    private var timeFormatter: DateFormatter {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        f.locale = Locale(identifier: "ja_JP")
+        return f
     }
     
     // MARK: - 数値入力フォーマット関数
@@ -306,9 +401,9 @@ struct InputView: View {
         } else if parts.count == 2 && parts[1].count > 2 {
             // 小数点以下2桁まで制限
             return parts[0] + "." + String(parts[1].prefix(2))
-        } else if parts[0].count > 10 {
-            // 整数部分を10桁まで制限（100億円まで）
-            return String(parts[0].prefix(10)) + (parts.count > 1 ? "." + parts[1] : "")
+        } else if parts[0].count > 11 {
+            // 整数部分を11桁まで制限（999億円まで）
+            return String(parts[0].prefix(11)) + (parts.count > 1 ? "." + parts[1] : "")
         }
         
         return filtered
@@ -360,12 +455,12 @@ struct InputView: View {
         // 少し長めの遅延で確実にフォーカス
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             print("🎯 金額フィールドにフォーカス設定中...")
-            isAmountFocused = true
-            print("🎯 金額フィールドにフォーカス設定完了: \(isAmountFocused)")
+            self.isAmountFocused = true
+            print("🎯 金額フィールドにフォーカス設定完了: \(self.isAmountFocused)")
             
             // さらに少し待ってから状態確認
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                print("🎯 最終フォーカス状態確認 - amount: \(isAmountFocused), note: \(isNoteFocused)")
+                print("🎯 最終フォーカス状態確認 - amount: \(self.isAmountFocused), note: \(self.isNoteFocused)")
             }
         }
         
@@ -576,7 +671,6 @@ struct InputView: View {
 struct FloatingActionButton: View {
     let isButtonEnabled: Bool
     let isProcessing: Bool
-    let keyboardHeight: CGFloat
     let action: () -> Void
     
     @AppStorage("autoFocusAfterSave") private var autoFocusAfterSave = true
@@ -618,29 +712,30 @@ struct FloatingActionButton: View {
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
-                .foregroundColor(.white)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(
-                            LinearGradient(
-                                gradient: Gradient(colors: [buttonColor, buttonColor.opacity(0.8)]),
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .shadow(
-                            color: isButtonEnabled ? buttonColor.opacity(0.4) : Color.clear,
-                            radius: 8,
-                            x: 0,
-                            y: 4
-                        )
-                )
             }
+            .modifier(AvailabilityModifier(isButtonEnabled: isButtonEnabled, isProcessing: isProcessing))
             .disabled(!isButtonEnabled || isProcessing)
             .buttonStyle(FloatingButtonStyle())
             .scaleEffect(isProcessing ? 0.95 : 1.0)
             .animation(.easeInOut(duration: 0.2), value: isProcessing)
             .animation(.easeInOut(duration: 0.3), value: isButtonEnabled)
+        }
+    }
+}
+
+fileprivate struct AvailabilityModifier: ViewModifier {
+    let isButtonEnabled: Bool
+    let isProcessing: Bool
+    
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .buttonStyle(.glass)
+                .tint(isButtonEnabled ? .blue : (isProcessing ? .orange : .gray))
+        } else {
+            content
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 2)
         }
     }
 }
@@ -653,6 +748,25 @@ struct FloatingButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
             .opacity(configuration.isPressed ? 0.8 : 1.0)
             .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+struct SaveOnKeyboardButton: View {
+    let isButtonEnabled: Bool
+    let isProcessing: Bool
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill")
+                Text(isProcessing ? "保存中..." : "入力を保存")
+                    .fontWeight(.semibold)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 56)
+        }
+        .modifier(AvailabilityModifier(isButtonEnabled: isButtonEnabled, isProcessing: isProcessing))
+        .disabled(!isButtonEnabled || isProcessing)
     }
 }
 
@@ -700,7 +814,10 @@ struct CategoryPickerView: View {
                 .background(
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Color.orange.opacity(0.1))
-                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                        )
                 )
             } else {
                 // カテゴリボタンのグリッド表示
@@ -811,7 +928,10 @@ struct CategoryButtonView: View {
             .background(
                 RoundedRectangle(cornerRadius: 12)
                     .fill(isSelected ? categoryColor.opacity(0.1) : Color.gray.opacity(0.05))
-                    .stroke(isSelected ? categoryColor : Color.gray.opacity(0.3), lineWidth: isSelected ? 2 : 1)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(isSelected ? categoryColor : Color.gray.opacity(0.3), lineWidth: isSelected ? 2 : 1)
+                    )
             )
         }
         .buttonStyle(PlainButtonStyle())
@@ -827,49 +947,3 @@ struct InputView_Previews: PreviewProvider {
     }
 }
 
-// MARK: - 🕒 現在時刻ボタンのビュー
-
-struct CurrentTimeButtonView: View {
-    @Binding var date: Date
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            Spacer()
-            
-            Button(action: {
-                // 現在時刻に設定
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    date = Date()
-                }
-                
-                // ハプティックフィードバック
-                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                impactFeedback.impactOccurred()
-                
-                print("🕒 現在時刻に設定: \(date)")
-            }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.caption)
-                    Text("現在時刻に設定")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                }
-                .foregroundColor(.blue)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.blue.opacity(0.1))
-                        .stroke(Color.blue.opacity(0.3), lineWidth: 1)
-                )
-            }
-            .buttonStyle(PlainButtonStyle())
-            .scaleEffect(1.0)
-            .animation(.easeInOut(duration: 0.1), value: false)
-            
-            Spacer()
-        }
-        .padding(.top, 4)
-    }
-}

@@ -8,6 +8,7 @@ import UIKit
 // MARK: - 通知名（再選択イベントをSwiftUIに伝える）
 extension Notification.Name {
     static let tabReselected = Notification.Name("TabReselectedNotification")
+    static let switchTab = Notification.Name("SwitchTabNotification")
 }
 
 // MARK: - タブ識別子
@@ -66,7 +67,8 @@ struct ContentView: View {
             settingsView: AnyView(SettingView()
                 .environmentObject(viewModel))
         )
-        .ignoresSafeArea()
+//        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .edgesIgnoringSafeArea(.all)
     }
     
     // 他のビューから呼び出せる関数（既存機能を維持）
@@ -95,13 +97,25 @@ struct TabBarControllerRepresentable: UIViewControllerRepresentable {
         let tabBarController = UITabBarController()
         tabBarController.delegate = context.coordinator
         
-        // TabBarの外観を明示的に設定
+        // TabBarの外観をLiquid Glass対応（iOS 26+）/ ブラー（iOS 25以下）に設定
         let appearance = UITabBarAppearance()
-        appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = UIColor.systemBackground
+        appearance.configureWithTransparentBackground()
+        appearance.backgroundColor = .clear
+        appearance.shadowColor = .clear
         
+        // すべてのOSバージョンで安定したブラー背景を使用
+        appearance.backgroundEffect = UIBlurEffect(style: .systemChromeMaterial)
+        
+        // 半透明を有効化
+        tabBarController.tabBar.isTranslucent = true
+        
+        // 標準/スクロールエッジの両方に適用
         tabBarController.tabBar.standardAppearance = appearance
         tabBarController.tabBar.scrollEdgeAppearance = appearance
+        tabBarController.tabBar.backgroundColor = .clear
+        
+        // iOS 26 以降のみ、ガラスエフェクトを下地に敷く
+        // Removed per instructions
         
         // 各タブをUIHostingControllerでラップ
         let calendarVC = UIHostingController(rootView: calendarView)
@@ -145,6 +159,18 @@ struct TabBarControllerRepresentable: UIViewControllerRepresentable {
         
         // デフォルトで入力タブを選択
         tabBarController.selectedIndex = AppTab.input.rawValue
+        
+        // 🔔 タブ切替通知を監視してプログラム的にタブを切り替え
+        NotificationCenter.default.addObserver(forName: .switchTab, object: nil, queue: .main) { notification in
+            if let index = notification.userInfo?["index"] as? Int,
+               index >= 0,
+               let viewControllers = tabBarController.viewControllers,
+               index < viewControllers.count {
+                tabBarController.selectedIndex = index
+                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                impactFeedback.impactOccurred()
+            }
+        }
         
         print("✅ UITabBarController 設定完了")
         return tabBarController
@@ -287,3 +313,4 @@ struct TabBarControllerRepresentable: UIViewControllerRepresentable {
         }
     }
 }
+

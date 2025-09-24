@@ -98,6 +98,8 @@ struct CategoryDetailView: View {
                     }
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
             }
             .navigationTitle("\(categoryName)の詳細")
             .navigationBarTitleDisplayMode(.inline)
@@ -180,59 +182,111 @@ struct CategoryDetailHeaderView: View {
             }
             
             // 統計情報
-            HStack(spacing: 0) {
-                // 合計金額
-                VStack(spacing: 4) {
-                    Text("合計金額")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text("¥\(totalAmount, specifier: "%.0f")")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundColor(categoryColor)
+            if #available(iOS 26.0, *) {
+                HStack(spacing: 0) {
+                    // 合計金額
+                    VStack(spacing: 4) {
+                        Text("合計金額")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("¥\(totalAmount, specifier: "%.0f")")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    // 区切り線
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 1, height: 40)
+                    
+                    // 支出回数
+                    VStack(spacing: 4) {
+                        Text("支出回数")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(expenseCount)回")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    // 区切り線
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 1, height: 40)
+                    
+                    // 平均金額
+                    VStack(spacing: 4) {
+                        Text("平均金額")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("¥\(expenseCount > 0 ? totalAmount / Double(expenseCount) : 0, specifier: "%.0f")")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
-                
-                // 区切り線
-                Rectangle()
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: 1, height: 40)
-                
-                // 支出回数
-                VStack(spacing: 4) {
-                    Text("支出回数")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text("\(expenseCount)回")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundColor(categoryColor)
+                .padding()
+                .glassEffect(.regular.tint(categoryColor).interactive(), in: .rect(cornerRadius: 12))
+            } else {
+                HStack(spacing: 0) {
+                    // 合計金額
+                    VStack(spacing: 4) {
+                        Text("合計金額")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("¥\(totalAmount, specifier: "%.0f")")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    // 区切り線
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 1, height: 40)
+                    
+                    // 支出回数
+                    VStack(spacing: 4) {
+                        Text("支出回数")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(expenseCount)回")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    // 区切り線
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 1, height: 40)
+                    
+                    // 平均金額
+                    VStack(spacing: 4) {
+                        Text("平均金額")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("¥\(expenseCount > 0 ? totalAmount / Double(expenseCount) : 0, specifier: "%.0f")")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
-                
-                // 区切り線
-                Rectangle()
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: 1, height: 40)
-                
-                // 平均金額
-                VStack(spacing: 4) {
-                    Text("平均金額")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text("¥\(expenseCount > 0 ? totalAmount / Double(expenseCount) : 0, specifier: "%.0f")")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundColor(categoryColor)
-                }
-                .frame(maxWidth: .infinity)
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(categoryColor.opacity(0.1))
+                        .stroke(categoryColor.opacity(0.3), lineWidth: 1)
+                )
             }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(categoryColor.opacity(0.1))
-                    .stroke(categoryColor.opacity(0.3), lineWidth: 1)
-            )
         }
     }
 }
@@ -262,8 +316,32 @@ struct CategoryDetailRowView: View {
                     .foregroundColor(.white)
             }
             .frame(width: 40, height: 40)
-            .background(categoryColor)
-            .clipShape(Circle())
+            if #available(iOS 26.0, *) {
+                VStack(spacing: 2) {
+                    Text("\(Calendar.current.component(.day, from: expense.date))")
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                    Text(getDayOfWeek())
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                }
+                .frame(width: 40, height: 40)
+                .glassEffect(.regular.tint(categoryColor).interactive(), in: .circle)
+            } else {
+                VStack(spacing: 2) {
+                    Text("\(Calendar.current.component(.day, from: expense.date))")
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                    Text(getDayOfWeek())
+                        .font(.caption2)
+                        .foregroundColor(.white)
+                }
+                .frame(width: 40, height: 40)
+                .background(categoryColor)
+                .clipShape(Circle())
+            }
             
             // 支出情報
             VStack(alignment: .leading, spacing: 4) {
@@ -315,3 +393,4 @@ struct CategoryDetailView_Previews: PreviewProvider {
         .environmentObject(ExpenseViewModel())
     }
 }
+

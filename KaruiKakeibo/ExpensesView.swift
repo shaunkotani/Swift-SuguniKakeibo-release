@@ -12,6 +12,7 @@ struct ExpensesView: View {
     @State private var searchFieldTrigger = false
     // 🎹 キーボード表示状態管理
     @State private var isKeyboardVisible = false
+    @FocusState private var isSearchFocused: Bool
 
     var filteredExpenses: [Expense] {
         let expenses = viewModel.expenses.sorted(by: { $0.date > $1.date })
@@ -24,8 +25,9 @@ struct ExpensesView: View {
                 let matchesNote = expense.note.localizedCaseInsensitiveContains(searchText)
                 let matchesCategory = viewModel.categories.first(where: { $0.id == expense.categoryId })?.name.localizedCaseInsensitiveContains(searchText) == true
                 let matchesAmount = matchesAmountSearch(expense: expense, searchText: searchText)
+                let matchesDate = matchesDateSearch(expense: expense, searchText: searchText)
                 
-                return matchesNote || matchesCategory || matchesAmount
+                return matchesNote || matchesCategory || matchesAmount || matchesDate
             }
         }
     }
@@ -66,6 +68,102 @@ struct ExpensesView: View {
         return expenseAmountString.contains(searchAmountString)
     }
     
+    // 日付検索のマッチング関数
+    private func matchesDateSearch(expense: Expense, searchText: String) -> Bool {
+        let expenseDate = expense.date
+        
+        // 日付フォーマット候補
+        let dateFormatters = [
+            "yyyy/M/d",     // 2024/1/15
+            "yyyy/MM/dd",   // 2024/01/15
+            "M/d",          // 1/15
+            "MM/dd",        // 01/15
+            "M月d日",       // 1月15日
+            "MM月dd日",     // 01月15日
+            "M月",          // 1月
+            "MM月",         // 01月
+            "yyyy年",       // 2024年
+            "yyyy年M月",    // 2024年1月
+            "yyyy年MM月",   // 2024年01月
+            "yyyy年M月d日", // 2024年1月15日
+            "HH:mm",        // 14:30
+            "H:mm",         // 9:30
+            "d日",          // 15日
+            "dd日"          // 15日
+        ]
+        
+        // 各フォーマットで検索テキストと照合
+        for formatString in dateFormatters {
+            let formatter = DateFormatter()
+            formatter.dateFormat = formatString
+            formatter.locale = Locale(identifier: "ja_JP")
+            
+            let expenseDateString = formatter.string(from: expenseDate)
+            
+            // 部分一致で検索
+            if expenseDateString.localizedCaseInsensitiveContains(searchText) {
+                return true
+            }
+        }
+        
+        // 曜日での検索（日本語）
+        let weekdayFormatter = DateFormatter()
+        weekdayFormatter.dateFormat = "EEEE"  // 月曜日、火曜日など
+        weekdayFormatter.locale = Locale(identifier: "ja_JP")
+        let weekdayFull = weekdayFormatter.string(from: expenseDate)
+        
+        weekdayFormatter.dateFormat = "E"     // 月、火など
+        let weekdayShort = weekdayFormatter.string(from: expenseDate)
+        
+        if weekdayFull.localizedCaseInsensitiveContains(searchText) ||
+           weekdayShort.localizedCaseInsensitiveContains(searchText) {
+            return true
+        }
+        
+        // 「今日」「昨日」「一昨日」での検索
+        let calendar = Calendar.current
+        let today = Date()
+        
+        if searchText.contains("今日") || searchText.contains("きょう") {
+            return calendar.isDate(expenseDate, inSameDayAs: today)
+        }
+        
+        if searchText.contains("昨日") || searchText.contains("きのう") {
+            if let yesterday = calendar.date(byAdding: .day, value: -1, to: today) {
+                return calendar.isDate(expenseDate, inSameDayAs: yesterday)
+            }
+        }
+        
+        if searchText.contains("一昨日") || searchText.contains("おととい") {
+            if let dayBeforeYesterday = calendar.date(byAdding: .day, value: -2, to: today) {
+                return calendar.isDate(expenseDate, inSameDayAs: dayBeforeYesterday)
+            }
+        }
+        
+        // 「今週」「先週」「今月」「先月」での検索
+        if searchText.contains("今週") {
+            return calendar.isDate(expenseDate, equalTo: today, toGranularity: .weekOfYear)
+        }
+        
+        if searchText.contains("先週") {
+            if let lastWeek = calendar.date(byAdding: .weekOfYear, value: -1, to: today) {
+                return calendar.isDate(expenseDate, equalTo: lastWeek, toGranularity: .weekOfYear)
+            }
+        }
+        
+        if searchText.contains("今月") {
+            return calendar.isDate(expenseDate, equalTo: today, toGranularity: .month)
+        }
+        
+        if searchText.contains("先月") {
+            if let lastMonth = calendar.date(byAdding: .month, value: -1, to: today) {
+                return calendar.isDate(expenseDate, equalTo: lastMonth, toGranularity: .month)
+            }
+        }
+        
+        return false
+    }
+    
     private var totalAmount: Double {
         filteredExpenses.reduce(0) { $0 + $1.amount }
     }
@@ -77,7 +175,7 @@ struct ExpensesView: View {
 
     // 検索ヒントテキストを簡素化
     private var searchPrompt: String {
-        return "メモ、カテゴリ、金額で検索"
+        return "メモ、カテゴリ、金額、日付で検索"
     }
     
     // 数値検索かどうかを判定
@@ -91,31 +189,37 @@ struct ExpensesView: View {
         return Double(cleanText) != nil
     }
     
+    // 日付検索かどうかを判定
+    private func isDateSearch(_ text: String) -> Bool {
+        // 日付関連のキーワードをチェック
+        let dateKeywords = [
+            "今日", "昨日", "一昨日", "おととい", "きょう", "きのう",
+            "今週", "先週", "今月", "先月",
+            "月", "日", "年", "時", "分",
+            "月曜", "火曜", "水曜", "木曜", "金曜", "土曜", "日曜",
+            "月", "火", "水", "木", "金", "土", "日"
+        ]
+        
+        for keyword in dateKeywords {
+            if text.contains(keyword) {
+                return true
+            }
+        }
+        
+        // 数字とスラッシュ、コロンを含む場合（日付フォーマットの可能性）
+        let datePattern = #"^\d{1,4}[/年月日時分:]\d{0,2}[/月日時分:]?\d{0,2}[日時分:]?\d{0,2}[分:]?$"#
+        return text.range(of: datePattern, options: .regularExpression) != nil
+    }
+    
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // サマリーヘッダー（アクセシビリティ対応）
-                if !filteredExpenses.isEmpty {
-                    ExpenseSummaryHeaderView(
-                        totalAmount: totalAmount,
-                        expenseCount: filteredExpenses.count,
-                        searchText: searchText
-                    )
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel(searchText.isEmpty ?
-                        "合計支出 \(Int(totalAmount))円、\(expenseCountText)" :
-                        "検索結果: 合計 \(Int(totalAmount))円、\(expenseCountText)"
-                    )
-                    .accessibilityHint("支出の概要情報")
-                }
-                
                 // 検索ヒント表示（検索中のみ）
                 if !searchText.isEmpty {
                     SearchHintView(
                         searchText: searchText,
                         isNumericSearch: isNumericSearch(searchText),
+                        isDateSearch: isDateSearch(searchText),
                         resultCount: filteredExpenses.count
                     )
                     .padding(.horizontal)
@@ -123,6 +227,21 @@ struct ExpensesView: View {
                 }
                 
                 List {
+                    if !filteredExpenses.isEmpty {
+                        ExpenseSummaryHeaderView(
+                            totalAmount: totalAmount,
+                            expenseCount: filteredExpenses.count,
+                            searchText: searchText
+                        )
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(searchText.isEmpty ?
+                            "合計支出 \(Int(totalAmount))円、\(expenseCountText)" :
+                            "検索結果: 合計 \(Int(totalAmount))円、\(expenseCountText)"
+                        )
+                        .accessibilityHint("支出の概要情報")
+                    }
+                    
                     ForEach(filteredExpenses) { expense in
                         Button(action: {
                             if !isKeyboardVisible {
@@ -133,7 +252,8 @@ struct ExpensesView: View {
                                 expense: expense,
                                 viewModel: viewModel,
                                 searchText: searchText,
-                                highlightAmount: isNumericSearch(searchText)
+                                highlightAmount: isNumericSearch(searchText),
+                                highlightDate: isDateSearch(searchText)
                             )
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -160,7 +280,8 @@ struct ExpensesView: View {
                     if filteredExpenses.isEmpty && !searchText.isEmpty {
                         SearchEmptyStateView(
                             searchText: searchText,
-                            isNumericSearch: isNumericSearch(searchText)
+                            isNumericSearch: isNumericSearch(searchText),
+                            isDateSearch: isDateSearch(searchText)
                         )
                         .accessibilityElement(children: .combine)
                         .accessibilityLabel("検索結果なし。\(searchText)に一致する支出が見つかりません")
@@ -175,26 +296,56 @@ struct ExpensesView: View {
             }
             .navigationTitle("支出履歴")
             .navigationBarTitleDisplayMode(.automatic)
-            .searchable(text: $searchText, prompt: searchPrompt)
+            .safeAreaInset(edge: .bottom) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.secondary)
+                            TextField(searchPrompt, text: $searchText)
+                                .textInputAutocapitalization(.never)
+                                .disableAutocorrection(true)
+                                .submitLabel(.search)
+                                .focused($isSearchFocused)
+                        }
+                        .padding(12)
+                        .background(
+                            Group {
+                                if #available(iOS 26.0, *) {
+                                    Color.clear
+                                        .glassEffect(
+                                            .regular
+//                                                .tint(.blue.opacity(0.35))
+                                                .interactive(),
+                                            in: .capsule
+                                        )
+                                } else {
+                                    Capsule()
+                                        .fill(.ultraThinMaterial)
+                                        .overlay(
+                                            Capsule()
+                                                .stroke(Color.white.opacity(0.25), lineWidth: 0.5)
+                                        )
+                                        .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 4)
+                                }
+                            }
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+            }
             // 🎯 iOS 18未満では代替手段として検索テキストの強制更新を使用
             .onChange(of: searchFieldTrigger) { _, _ in
                 // 検索フィールドにフォーカスを当てるための代替手段
                 focusSearchFieldFallback()
             }
-            // 🎹 キーボード用ツールバー
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    if isKeyboardVisible {
-                        Spacer()
-                        
-                        Button("閉じる") {
-                            hideKeyboard()
-                        }
-                        .foregroundColor(.blue)
-                        .fontWeight(.semibold)
-                    }
-                }
-            }
+//            // 🎹 キーボード用ツールバー
+//            .toolbar {
+//                ToolbarItemGroup(placement: .keyboard) {
+//                    Button("閉じる") {
+//                        hideKeyboard()
+//                    }
+//                    .foregroundColor(.blue)
+//                    .fontWeight(.semibold)
+//                }
+//            }
             .simultaneousGesture(
                 TapGesture()
                     .onEnded { _ in
@@ -308,15 +459,8 @@ struct ExpensesView: View {
     private func focusSearchFieldFallback() {
         print("🎯 focusSearchFieldFallback() 実行")
         
-        // UIApplication経由でキーボードの表示を試行
         DispatchQueue.main.async {
-            // 検索バーの親Viewを探してfirstResponderにする試み
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-               let keyWindow = windowScene.windows.first(where: { $0.isKeyWindow }) {
-                
-                // 検索バーを探してフォーカスを当てる
-                self.findAndFocusSearchBar(in: keyWindow)
-            }
+            self.isSearchFocused = true
         }
     }
     
@@ -449,17 +593,46 @@ struct ExpensesView: View {
 struct SearchHintView: View {
     let searchText: String
     let isNumericSearch: Bool
+    let isDateSearch: Bool
     let resultCount: Int
+    
+    private var hintIcon: String {
+        if isDateSearch {
+            return "calendar"
+        } else if isNumericSearch {
+            return "yensign.circle"
+        } else {
+            return "magnifyingglass"
+        }
+    }
+    
+    private var hintColor: Color {
+        if isDateSearch {
+            return .orange
+        } else if isNumericSearch {
+            return .green
+        } else {
+            return .blue
+        }
+    }
+    
+    private var hintText: String {
+        if isDateSearch {
+            return "日付「\(searchText)」で検索中 - \(resultCount)件見つかりました"
+        } else if isNumericSearch {
+            return "金額「\(searchText)」で検索中 - \(resultCount)件見つかりました"
+        } else {
+            return "「\(searchText)」で検索中 - \(resultCount)件見つかりました"
+        }
+    }
     
     var body: some View {
         HStack {
-            Image(systemName: isNumericSearch ? "yensign.circle" : "magnifyingglass")
-                .foregroundColor(isNumericSearch ? .green : .blue)
+            Image(systemName: hintIcon)
+                .foregroundColor(hintColor)
                 .font(.caption)
             
-            Text(isNumericSearch ?
-                 "金額「\(searchText)」で検索中 - \(resultCount)件見つかりました" :
-                 "「\(searchText)」で検索中 - \(resultCount)件見つかりました")
+            Text(hintText)
                 .font(.caption)
                 .foregroundColor(.secondary)
             
@@ -469,8 +642,8 @@ struct SearchHintView: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(isNumericSearch ? Color.green.opacity(0.1) : Color.blue.opacity(0.1))
-                .stroke(isNumericSearch ? Color.green.opacity(0.3) : Color.blue.opacity(0.3), lineWidth: 1)
+                .fill(hintColor.opacity(0.1))
+                .stroke(hintColor.opacity(0.3), lineWidth: 1)
         )
     }
 }
@@ -530,37 +703,60 @@ struct ExpenseSummaryHeaderView: View {
 struct SearchEmptyStateView: View {
     let searchText: String
     let isNumericSearch: Bool
+    let isDateSearch: Bool
+    
+    private var emptyStateIcon: String {
+        if isDateSearch {
+            return "calendar"
+        } else if isNumericSearch {
+            return "yensign.circle"
+        } else {
+            return "magnifyingglass"
+        }
+    }
+    
+    private var emptyStateTitle: String {
+        if isDateSearch {
+            return "日付「\(searchText)」の検索結果がありません"
+        } else if isNumericSearch {
+            return "金額「\(searchText)」の検索結果がありません"
+        } else {
+            return "「\(searchText)」の検索結果がありません"
+        }
+    }
+    
+    private var emptyStateDescription: String {
+        if isDateSearch {
+            return "日付形式の例：\n• 2024/1/15\n• 1月15日\n• 今日、昨日\n• 今月、先月\n• 月曜日、火曜日"
+        } else if isNumericSearch {
+            return "金額の部分一致で検索しています。例：「500」で「1500円」もヒットします"
+        } else {
+            return "メモ、カテゴリ名、金額、または日付で検索してみてください"
+        }
+    }
     
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: isNumericSearch ? "yensign.circle" : "magnifyingglass")
+            Image(systemName: emptyStateIcon)
                 .font(.system(size: 60))
                 .foregroundColor(.gray)
                 .accessibilityHidden(true)
             
             VStack(spacing: 8) {
-                Text(isNumericSearch ?
-                     "金額「\(searchText)」の検索結果がありません" :
-                     "「\(searchText)」の検索結果がありません")
+                Text(emptyStateTitle)
                     .font(.headline)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .accessibilityHidden(true)
                 
-                if isNumericSearch {
-                    Text("金額の部分一致で検索しています。例：「500」で「1500円」もヒットします")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .accessibilityHidden(true)
-                    
-                    Text("別の金額で検索してみてください")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .accessibilityHidden(true)
-                } else {
-                    Text("メモ、カテゴリ名、または金額で検索してみてください")
+                Text(emptyStateDescription)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .accessibilityHidden(true)
+                
+                if !isDateSearch && !isNumericSearch {
+                    Text("別のキーワードで検索してみてください")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
@@ -608,6 +804,7 @@ struct ExpenseRowView: View {
     let viewModel: ExpenseViewModel
     let searchText: String
     let highlightAmount: Bool
+    let highlightDate: Bool
     @Environment(\.accessibilityVoiceOverEnabled) var voiceOverEnabled
     
     // 修正: 日時表示を「yyyy/M/d HH:mm」形式に変更
@@ -678,10 +875,18 @@ struct ExpenseRowView: View {
                     
                     Spacer()
                     
-                    // 修正: 日時表示を統一フォーマットに変更
+                    // 修正: 日時表示を統一フォーマットに変更（日付検索時はハイライト）
                     Text("\(expense.date, formatter: dateFormatter)")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(highlightDate ? .orange : .secondary)
+                        .background(
+                            highlightDate ?
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.orange.opacity(0.2))
+                                .padding(.horizontal, -4)
+                                .padding(.vertical, -2) :
+                            nil
+                        )
                         .accessibilityHidden(true)
                 }
                 
@@ -725,3 +930,4 @@ struct ExpensesView_Previews: PreviewProvider {
             .environmentObject(ExpenseViewModel())
     }
 }
+

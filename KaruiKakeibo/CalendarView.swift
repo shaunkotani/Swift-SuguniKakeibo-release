@@ -128,6 +128,7 @@ struct CalendarView: View {
                 Spacer()
             }
             .navigationTitle("支出カレンダー")
+            .navigationBarTitleDisplayMode(.inline)
             // 🔥 新規追加: タブ表示時の更新処理
             .onAppear {
                 print("📅 CalendarView表示開始 - 初期計算実行")
@@ -410,9 +411,17 @@ struct CalendarGridView: View {
         }
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.gray.opacity(0.05))
-                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+            Group {
+                if #available(iOS 26.0, *) {
+                    AnyView(EmptyView().glassEffect(.regular.tint(.blue).interactive(), in: .rect(cornerRadius: 12)))
+                } else {
+                    AnyView(EmptyView().background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.gray.opacity(0.05))
+                            .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                    ))
+                }
+            }
         )
     }
 }
@@ -495,22 +504,43 @@ struct CalendarDayView: View {
                     .minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity, minHeight: 60)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isToday ? Color.orange : cellColor)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(
-                                isToday ? Color.orange.opacity(0.8) :
-                                    isMaxExpenseDay ? Color.red.opacity(0.8) :
-                                hasExpense ? Color.blue.opacity(0.4) : Color.clear,
-                                lineWidth: isToday || isMaxExpenseDay ? 2 : 1
-                            )
-                    )
+            .modifier(
+                GroupModifier {
+                    if #available(iOS 26.0, *) {
+                        $0.glassEffect(.regular.tint(isToday ? .orange : (isMaxExpenseDay ? .red : (hasExpense ? .blue : .clear))).interactive(), in: .rect(cornerRadius: 8))
+                    } else {
+                        $0.background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(isToday ? Color.orange : cellColor)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(
+                                            isToday ? Color.orange.opacity(0.8) :
+                                                isMaxExpenseDay ? Color.red.opacity(0.8) :
+                                            hasExpense ? Color.blue.opacity(0.4) : Color.clear,
+                                            lineWidth: isToday || isMaxExpenseDay ? 2 : 1
+                                        )
+                                )
+                        )
+                    }
+                }
             )
         }
         .buttonStyle(CalendarCellButtonStyle())
         .disabled(false)
+    }
+}
+
+// Helper to conditionally apply modifiers inside view builder
+struct GroupModifier: ViewModifier {
+    let transform: (AnyView) -> AnyView
+    
+    init<Content: View>(@ViewBuilder transform: @escaping (AnyView) -> Content) {
+        self.transform = { AnyView(transform($0)) }
+    }
+    
+    func body(content: Content) -> some View {
+        transform(AnyView(content))
     }
 }
 
@@ -572,13 +602,13 @@ struct MonthSummaryHeaderView: View {
                         .fontWeight(.bold)
                         .foregroundColor(.primary)
                         .animation(.easeInOut(duration: 0.3), value: totalAmount)
-                    
-                    if !isCalculating && totalAmount > 0 {
-                        Image(systemName: "calendar.badge.plus")
-                            .font(.title2)
-                            .foregroundColor(.blue)
-                            .opacity(0.7)
-                    }
+//                    
+//                    if !isCalculating && totalAmount > 0 {
+//                        Image(systemName: "calendar.badge.plus")
+//                            .font(.title2)
+//                            .foregroundColor(.blue)
+//                            .opacity(0.7)
+//                    }
                 }
             }
             
@@ -643,9 +673,17 @@ struct MonthSummaryHeaderView: View {
         }
         .padding()
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(totalAmount > 0 ? Color.blue.opacity(0.1) : Color.gray.opacity(0.05))
-                .stroke(totalAmount > 0 ? Color.blue.opacity(0.3) : Color.gray.opacity(0.2), lineWidth: 1)
+            Group {
+                if #available(iOS 26.0, *) {
+                    AnyView(EmptyView().glassEffect(.regular.tint(totalAmount > 0 ? .blue : .gray).interactive(), in: .rect(cornerRadius: 12)))
+                } else {
+                    AnyView(EmptyView().background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(totalAmount > 0 ? Color.blue.opacity(0.1) : Color.gray.opacity(0.05))
+                            .stroke(totalAmount > 0 ? Color.blue.opacity(0.3) : Color.gray.opacity(0.2), lineWidth: 1)
+                    ))
+                }
+            }
         )
         .animation(.easeInOut(duration: 0.3), value: totalAmount > 0)
     }
@@ -671,12 +709,12 @@ struct MonthSelectorView: View {
             }) {
                 Image(systemName: "chevron.left")
                     .font(.title2)
-                    .foregroundColor(.blue)
+                    .foregroundColor(.white)
                     .frame(width: 44, height: 44)
-                    .background(Color.blue.opacity(0.1))
                     .clipShape(Circle())
             }
             .buttonStyle(PlainButtonStyle())
+            .contentShape(Circle())
             
             Spacer()
             
@@ -694,15 +732,27 @@ struct MonthSelectorView: View {
             }) {
                 Image(systemName: "chevron.right")
                     .font(.title2)
-                    .foregroundColor(.blue)
+                    .foregroundColor(.white)
                     .frame(width: 44, height: 44)
-                    .background(Color.blue.opacity(0.1))
                     .clipShape(Circle())
             }
             .buttonStyle(PlainButtonStyle())
+            .contentShape(Circle())
         }
         .padding(.vertical, 8)
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(10)
+        .background {
+            if #available(iOS 26.0, *) {
+                Color.clear
+                    .glassEffect(.regular.tint(.blue.opacity(0.25)).interactive(), in: .rect(cornerRadius: 10))
+            } else {
+                Color.clear
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.gray.opacity(0.15), lineWidth: 1)
+                    )
+            }
+        }
     }
 }
+

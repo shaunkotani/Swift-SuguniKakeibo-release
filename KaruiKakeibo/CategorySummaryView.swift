@@ -24,15 +24,26 @@ struct CategoryChartView: View {
     }
     
     private var chartData: [ChartDataItem] {
-        categoryTotals.filter { $0.total > 0 }.map { item in
-            ChartDataItem(
-                category: item.category,
-                categoryId: item.categoryId,
-                value: item.total,
-                percentage: (item.total / totalAmount) * 100,
-                color: colorFromString(viewModel.categoryColor(for: item.categoryId))
-            )
-        }
+        // 安全策: 合計が0以下のときはグラフを描かない
+        if totalAmount <= 0 { return [] }
+        
+        let items: [ChartDataItem] = categoryTotals
+            .filter { $0.total > 0 }
+            .compactMap { item in
+                // パーセンテージを安全に計算（NaN/∞を防ぐ）
+                let raw = (item.total / totalAmount) * 100
+                let percentage = raw.isFinite ? raw : 0
+                return ChartDataItem(
+                    category: item.category,
+                    categoryId: item.categoryId,
+                    value: item.total,
+                    percentage: percentage,
+                    color: colorFromString(viewModel.categoryColor(for: item.categoryId))
+                )
+            }
+            .filter { $0.value > 0 && $0.percentage.isFinite }
+        
+        return items
     }
     
     private func colorFromString(_ colorString: String) -> Color {
@@ -62,21 +73,36 @@ struct CategoryChartView: View {
                 ZStack {
                     // Swift Charts版の円グラフ
                     if #available(iOS 16.0, *) {
-                        Chart(chartData, id: \.categoryId) { item in
-                            SectorMark(
-                                angle: .value("金額", item.value),
-                                innerRadius: .ratio(0.4), // ドーナツ型にして中央にテキスト表示
-                                angularInset: 2.0 // セクター間に隙間
-                            )
-                            .foregroundStyle(item.color)
-                            .cornerRadius(2.0)
-                            .opacity(0.85)
+                        if !chartData.isEmpty {
+                            Chart(chartData, id: \.categoryId) { item in
+                                SectorMark(
+                                    angle: .value("金額", item.value),
+                                    innerRadius: .ratio(0.4), // ドーナツ型にして中央にテキスト表示
+                                    angularInset: 2.0 // セクター間に隙間
+                                )
+                                .foregroundStyle(item.color)
+                                .cornerRadius(2.0)
+                                .opacity(0.85)
+                            }
+                            .id(monthFormatter.string(from: selectedMonth))
+                            .frame(width: 200, height: 200)
+                            .transaction { transaction in
+                                transaction.disablesAnimations = true
+                            }
+                        } else {
+                            // データがない場合は空のプレースホルダー
+                            EmptyView()
+                                .frame(width: 200, height: 200)
                         }
-                        .frame(width: 200, height: 200)
                     } else {
                         // iOS 15以下用のフォールバック（既存のPieChartView）
-                        PieChartView(data: chartData)
-                            .frame(width: 200, height: 200)
+                        if !chartData.isEmpty {
+                            PieChartView(data: chartData)
+                                .frame(width: 200, height: 200)
+                        } else {
+                            EmptyView()
+                                .frame(width: 200, height: 200)
+                        }
                     }
                     
                     // 中央の合計金額表示（既存と同じデザイン）
@@ -275,75 +301,89 @@ struct CategorySummaryView: View {
         return formatter
     }
     
+    // MARK: - 分割: ヘッダ背景のビュー（型を単純化）
+    @ViewBuilder
+    private func headerBackground() -> some View {
+        if #available(iOS 26.0, *) {
+            Color.clear
+        } else {
+            Rectangle().fill(.ultraThinMaterial)
+        }
+    }
+    
+    // MARK: - 分割: セクション本体（チャート/リスト or 空状態）
+    @ViewBuilder
+    private func contentSection() -> some View {
+        if hasAnyExpenses && totalAmount > 0 {
+            CategoryChartView(
+                categoryTotals: categoryTotals,
+                totalAmount: totalAmount,
+                selectedMonth: selectedMonth,
+                viewModel: viewModel
+            )
+            .padding(.horizontal)
+            .padding(.bottom, 16)
+
+            LazyVStack(spacing: 0) {
+                ForEach(categoryTotals, id: \.categoryId) { item in
+                    NavigationLink(destination: CategoryDetailView(
+                        categoryName: item.category,
+                        categoryId: item.categoryId,
+                        selectedMonth: selectedMonth
+                    )) {
+                        CategoryRowView(
+                            category: item.category,
+                            categoryId: item.categoryId,
+                            total: item.total,
+                            percentage: totalAmount > 0 ? (item.total / totalAmount) * 100 : 0
+                        )
+                        .environmentObject(viewModel)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+
+                    if item.categoryId != categoryTotals.last?.categoryId {
+                        Divider()
+                            .padding(.horizontal, 16)
+                    }
+                }
+            }
+            .background(Color(UIColor.systemBackground))
+            .cornerRadius(12)
+            .padding(.horizontal)
+        } else {
+            EmptyStateView(
+                selectedMonth: selectedMonth,
+                monthFormatter: monthFormatter,
+                onAddExpense: {
+                    navigateToInputTab()
+                }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .refreshable {
+                await refreshData()
+            }
+        }
+    }
+    
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                     Section {
-                        if hasAnyExpenses {
-                            // チャート表示
-                            CategoryChartView(
-                                categoryTotals: categoryTotals,
-                                totalAmount: totalAmount,
-                                selectedMonth: selectedMonth,
-                                viewModel: viewModel
-                            )
-                            .padding(.horizontal)
-                            .padding(.bottom, 16)
-                            
-                            // カテゴリリスト
-                            LazyVStack(spacing: 0) {
-                                ForEach(categoryTotals, id: \.categoryId) { item in
-                                    NavigationLink(destination: CategoryDetailView(
-                                        categoryName: item.category,
-                                        categoryId: item.categoryId,
-                                        selectedMonth: selectedMonth
-                                    )) {
-                                        CategoryRowView(
-                                            category: item.category,
-                                            categoryId: item.categoryId,
-                                            total: item.total,
-                                            percentage: totalAmount > 0 ? (item.total / totalAmount) * 100 : 0
-                                        )
-                                        .environmentObject(viewModel)
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    
-                                    // 区切り線
-                                    if item.categoryId != categoryTotals.last?.categoryId {
-                                        Divider()
-                                            .padding(.horizontal, 16)
-                                    }
-                                }
-                            }
-                            .background(Color(UIColor.systemBackground))
-                            .cornerRadius(12)
-                            .padding(.horizontal)
-                        } else {
-                            // 空状態表示
-                            EmptyStateView(
-                                selectedMonth: selectedMonth,
-                                monthFormatter: monthFormatter,
-                                onAddExpense: {
-                                    navigateToInputTab()
-                                }
-                            )
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .refreshable {
-                                await refreshData()
-                            }
-                        }
+                        contentSection()
                     } header: {
                         MonthSelectorView(selectedMonth: $selectedMonth)
                             .padding(.horizontal)
                             .padding(.bottom, 8)
-                            .background(Color(UIColor.systemBackground))
+                            .background(headerBackground())
+                    }
                 }
             }
+            .navigationTitle("カテゴリ別集計")
+            .navigationBarTitleDisplayMode(.large)
         }
-        .navigationTitle("カテゴリ別集計")
         .onAppear {
             fetchCategoryTotals()
         }
@@ -367,58 +407,57 @@ struct CategorySummaryView: View {
             }
         }
     }
-}
-
-private func fetchCategoryTotals() {
-    let calendar = Calendar.current
-    let targetMonth = calendar.component(.month, from: selectedMonth)
-    let targetYear = calendar.component(.year, from: selectedMonth)
     
-    // 選択された月の支出のみをフィルタリング
-    let filteredExpenses = viewModel.expenses.filter { expense in
-        let month = calendar.component(.month, from: expense.date)
-        let year = calendar.component(.year, from: expense.date)
-        return month == targetMonth && year == targetYear
+    private func fetchCategoryTotals() {
+        let calendar = Calendar.current
+        let targetMonth = calendar.component(.month, from: selectedMonth)
+        let targetYear = calendar.component(.year, from: selectedMonth)
+        
+        // 選択された月の支出のみをフィルタリング
+        let filteredExpenses = viewModel.expenses.filter { expense in
+            let month = calendar.component(.month, from: expense.date)
+            let year = calendar.component(.year, from: expense.date)
+            return month == targetMonth && year == targetYear
+        }
+        
+        // カテゴリ別集計を効率化
+        let expensesByCategory = Dictionary(grouping: filteredExpenses) { $0.categoryId }
+        
+        categoryTotals = viewModel.categories.compactMap { category in
+            let expenses = expensesByCategory[category.id] ?? []
+            let total = expenses.reduce(0) { $0 + $1.amount }
+            return (category: category.name, categoryId: category.id, total: total)
+        }.sorted { $0.total > $1.total }
+        
+        print("📊 カテゴリ別集計更新: \(categoryTotals.count)カテゴリ, 合計: ¥\(totalAmount)")
     }
     
-    // カテゴリ別集計を効率化
-    let expensesByCategory = Dictionary(grouping: filteredExpenses) { $0.categoryId }
-    
-    categoryTotals = viewModel.categories.compactMap { category in
-        let expenses = expensesByCategory[category.id] ?? []
-        let total = expenses.reduce(0) { $0 + $1.amount }
-        return (category: category.name, categoryId: category.id, total: total)
-    }.sorted { $0.total > $1.total }
-    
-    print("📊 カテゴリ別集計更新: \(categoryTotals.count)カテゴリ, 合計: ¥\(totalAmount)")
-}
-
-private func refreshData() async {
-    isRefreshing = true
-    
-    // データを更新
-    viewModel.refreshAllData()
-    
-    // 少し待ってからフラグを解除（UXのため）
-    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
-    
-    isRefreshing = false
-}
-
-// 入力タブに遷移する関数
-private func navigateToInputTab() {
-    selectedTab = 2
-    
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-        shouldFocusAmount = true
+    private func refreshData() async {
+        isRefreshing = true
+        
+        // データを更新
+        viewModel.refreshAllData()
+        
+        // 少し待ってからフラグを解除（UXのため）
+        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
+        
+        isRefreshing = false
     }
     
-    // ハプティックフィードバック
-    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-    impactFeedback.impactOccurred()
-    
-    print("📊 カテゴリサマリービューから入力画面へ遷移")
-}
+    // 入力タブに遷移する関数
+    private func navigateToInputTab() {
+        selectedTab = 2
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            shouldFocusAmount = true
+        }
+        
+        // ハプティックフィードバック
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+        
+        print("📊 カテゴリサマリービューから入力画面へ遷移")
+    }
 }
 
 
@@ -458,36 +497,7 @@ struct EmptyStateView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
             }
-            
-            // タップ可能な支出追加ボタン
-            Button(action: onAddExpense) {
-                VStack(spacing: 8) {
-                    HStack(spacing: 16) {
-                        Image(systemName: "plus.circle.fill")
-                            .foregroundColor(.blue)
-                            .font(.title2)
-                        Text("支出を追加")
-                            .foregroundColor(.blue)
-                            .fontWeight(.medium)
-                            .font(.headline)
-                    }
-                    
-                    Text("タップで入力画面へ")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.blue.opacity(0.1))
-                        .stroke(Color.blue.opacity(0.3), lineWidth: 1)
-                )
-            }
-            .buttonStyle(PlainButtonStyle())
-            .scaleEffect(1.0)
-            .animation(.easeInOut(duration: 0.1), value: false)
-            .padding(.top, 8)
+    
             
             Text("または下にスワイプして更新")
                 .font(.caption2)
@@ -652,3 +662,4 @@ struct CategoryRowView: View {
         .contentShape(Rectangle())
     }
 }
+
