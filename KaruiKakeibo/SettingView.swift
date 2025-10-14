@@ -46,7 +46,7 @@ struct SettingView: View {
                         CategoryManagementButtonView(
                             icon: "bell.circle",
                             title: "通知設定",
-                            subtitle: "毎日の支出記録リマインダー設定",
+                            subtitle: "支出の記録をリマインドできます",
                             color: .blue
                         )
                     }
@@ -119,7 +119,7 @@ struct SettingView: View {
                     HStack {
                         Text("バージョン")
                         Spacer()
-                        Text("1.3.0")
+                        Text("2.0.0")
                             .foregroundColor(.gray)
                     }
                     // サポートページリンク

@@ -4,10 +4,17 @@ import SwiftUI
 
 // 通知時刻の構造体
 struct NotificationTime: Codable, Identifiable {
-    let id = UUID()
+    let id: UUID
     let hour: Int
     let minute: Int
     let isEnabled: Bool
+    
+    init(hour: Int, minute: Int, isEnabled: Bool, id: UUID = UUID()) {
+        self.id = id
+        self.hour = hour
+        self.minute = minute
+        self.isEnabled = isEnabled
+    }
     
     var displayTime: String {
         return String(format: "%02d:%02d", hour, minute)
@@ -37,7 +44,7 @@ class NotificationManager: ObservableObject {
     private func loadNotificationTimes() {
         if let data = UserDefaults.standard.data(forKey: "notificationTimes"),
            let times = try? JSONDecoder().decode([NotificationTime].self, from: data) {
-            notificationTimes = times
+            notificationTimes = sortNotificationTimes(times)
         } else {
             // デフォルト時刻（20:00）を設定
             notificationTimes = [NotificationTime(hour: 20, minute: 0, isEnabled: true)]
@@ -45,8 +52,21 @@ class NotificationManager: ObservableObject {
         }
     }
     
+    // 通知時刻をソート（時刻順）
+    private func sortNotificationTimes(_ times: [NotificationTime]) -> [NotificationTime] {
+        return times.sorted { time1, time2 in
+            if time1.hour == time2.hour {
+                return time1.minute < time2.minute
+            }
+            return time1.hour < time2.hour
+        }
+    }
+    
     // 通知時刻データの保存
     private func saveNotificationTimes() {
+        // 保存前にソート
+        notificationTimes = sortNotificationTimes(notificationTimes)
+        
         if let data = try? JSONEncoder().encode(notificationTimes) {
             UserDefaults.standard.set(data, forKey: "notificationTimes")
         }
@@ -127,7 +147,7 @@ class NotificationManager: ObservableObject {
         for (index, time) in enabledTimes.enumerated() {
             let content = UNMutableNotificationContent()
             content.title = "支出の記録"
-            content.body = "今日の支出記録を忘れていませんか？💰"
+            content.body = "今日の記録を忘れていませんか？かるく記録しておきましょう！💰"
             content.sound = .default
             
             let trigger = UNCalendarNotificationTrigger(dateMatching: time.dateComponents, repeats: true)
@@ -197,9 +217,14 @@ class NotificationManager: ObservableObject {
     
     // 通知時刻を削除
     func removeNotificationTime(at index: Int) {
-        guard index >= 0 && index < notificationTimes.count else { return }
+        guard index >= 0 && index < notificationTimes.count else { 
+            print("📱 削除失敗: 無効なインデックス \(index)")
+            return 
+        }
         
         let removedTime = notificationTimes[index]
+        print("📱 削除開始: \(removedTime.displayTime) (ID: \(removedTime.id))")
+        
         notificationTimes.remove(at: index)
         saveNotificationTimes()
         
@@ -216,11 +241,14 @@ class NotificationManager: ObservableObject {
         guard index >= 0 && index < notificationTimes.count else { return }
         
         let oldTime = notificationTimes[index]
-        notificationTimes[index] = NotificationTime(
+        let newTime = NotificationTime(
             hour: oldTime.hour,
             minute: oldTime.minute,
-            isEnabled: !oldTime.isEnabled
+            isEnabled: !oldTime.isEnabled,
+            id: oldTime.id  // 既存のIDを保持
         )
+        
+        notificationTimes[index] = newTime
         saveNotificationTimes()
         
         // 通知が有効な場合は再スケジュール
@@ -228,20 +256,26 @@ class NotificationManager: ObservableObject {
             scheduleNotifications()
         }
         
-        let status = notificationTimes[index].isEnabled ? "有効" : "無効"
-        print("📱 通知時刻(\(notificationTimes[index].displayTime))を\(status)にしました")
+        let status = newTime.isEnabled ? "有効" : "無効"
+        print("📱 通知時刻(\(newTime.displayTime))を\(status)にしました")
+        
+        // オブジェクト変更を明示的に通知
+        objectWillChange.send()
     }
     
-    // 通知時刻を更新
-    func updateNotificationTime(at index: Int, hour: Int, minute: Int) {
-        guard index >= 0 && index < notificationTimes.count else { return }
+    // 通知時刻を更新（IDベース）
+    func updateNotificationTime(id: UUID, hour: Int, minute: Int) {
+        guard let index = notificationTimes.firstIndex(where: { $0.id == id }) else { return }
         
         let oldTime = notificationTimes[index]
-        notificationTimes[index] = NotificationTime(
+        let newTime = NotificationTime(
             hour: hour,
             minute: minute,
-            isEnabled: oldTime.isEnabled
+            isEnabled: oldTime.isEnabled,
+            id: oldTime.id  // 既存のIDを保持
         )
+        
+        notificationTimes[index] = newTime
         saveNotificationTimes()
         
         // 通知が有効な場合は再スケジュール
@@ -249,7 +283,15 @@ class NotificationManager: ObservableObject {
             scheduleNotifications()
         }
         
-        print("📱 通知時刻を更新しました: \(notificationTimes[index].displayTime)")
+        print("📱 通知時刻を更新しました: \(newTime.displayTime)")
+        
+        // オブジェクト変更を明示的に通知
+        objectWillChange.send()
+    }
+    
+    // 通知時刻を取得（IDベース）
+    func getNotificationTime(id: UUID) -> NotificationTime? {
+        return notificationTimes.first { $0.id == id }
     }
     
     // デフォルト通知時刻にリセット

@@ -7,7 +7,7 @@ struct NotificationSettingsView: View {
     @State private var showingTestAlert = false
     @State private var showingAddTimeSheet = false
     @State private var showingEditTimeSheet = false
-    @State private var editingTimeIndex: Int = 0
+    @State private var editingTimeID: UUID? = nil
     @State private var permissionAlertType: PermissionAlertType = .initial
     
     enum PermissionAlertType {
@@ -97,20 +97,50 @@ struct NotificationSettingsView: View {
                             .frame(maxWidth: .infinity)
                             .padding()
                         } else {
-                            ForEach(Array(notificationManager.notificationTimes.enumerated()), id: \.element.id) { index, time in
+                            ForEach(notificationManager.notificationTimes, id: \.id) { time in
                                 NotificationTimeRow(
                                     time: time,
                                     onToggle: {
-                                        notificationManager.toggleNotificationTime(at: index)
+                                        if let index = notificationManager.notificationTimes.firstIndex(where: { $0.id == time.id }) {
+                                            notificationManager.toggleNotificationTime(at: index)
+                                        }
                                     },
                                     onEdit: {
-                                        editingTimeIndex = index
+                                        print("📱 編集ボタンをタップ - ID: \(time.id)")
+                                        editingTimeID = time.id
                                         showingEditTimeSheet = true
                                     },
                                     onDelete: {
-                                        notificationManager.removeNotificationTime(at: index)
+                                        print("📱 削除アクションが呼び出された - ID: \(time.id)")
+                                        if let index = notificationManager.notificationTimes.firstIndex(where: { $0.id == time.id }) {
+                                            print("📱 削除インデックス: \(index)")
+                                            notificationManager.removeNotificationTime(at: index)
+                                        } else {
+                                            print("📱 削除失敗: IDが見つかりません")
+                                        }
                                     }
                                 )
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button("削除", role: .destructive) {
+                                        print("📱 スワイプ削除 - ID: \(time.id)")
+                                        
+                                        // ハプティックフィードバック
+                                        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                                        impactFeedback.impactOccurred()
+                                        
+                                        if let index = notificationManager.notificationTimes.firstIndex(where: { $0.id == time.id }) {
+                                            notificationManager.removeNotificationTime(at: index)
+                                        }
+                                    }
+                                }
+                                .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                    Button("編集") {
+                                        print("📱 スワイプ編集 - ID: \(time.id)")
+                                        editingTimeID = time.id
+                                        showingEditTimeSheet = true
+                                    }
+                                    .tint(.blue)
+                                }
                             }
                             
                             // リセットボタン
@@ -174,56 +204,56 @@ struct NotificationSettingsView: View {
                     .padding(.vertical, 4)
                 }
                 
-                // テスト通知
-                if notificationManager.hasPermission {
-                    Section(header: Text("テスト")) {
-                        Button(action: {
-                            notificationManager.sendTestNotification()
-                            showingTestAlert = true
-                        }) {
-                            HStack {
-                                Image(systemName: "bell.badge")
-                                    .foregroundColor(.orange)
-                                Text("テスト通知を送信")
-                                    .foregroundColor(.primary)
-                            }
-                        }
-                        
-                        Text("3秒後にテスト通知が届きます")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
+//                // テスト通知
+//                if notificationManager.hasPermission {
+//                    Section(header: Text("テスト")) {
+//                        Button(action: {
+//                            notificationManager.sendTestNotification()
+//                            showingTestAlert = true
+//                        }) {
+//                            HStack {
+//                                Image(systemName: "bell.badge")
+//                                    .foregroundColor(.orange)
+//                                Text("テスト通知を送信")
+//                                    .foregroundColor(.primary)
+//                            }
+//                        }
+//                        
+//                        Text("3秒後にテスト通知が届きます")
+//                            .font(.caption)
+//                            .foregroundColor(.secondary)
+//                    }
+//                }
                 
-                // 通知内容のプレビュー
-                Section(header: Text("通知内容プレビュー")) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Image(systemName: "app.badge")
-                                .foregroundColor(.blue)
-                            Text("軽い家計簿")
-                                .fontWeight(.medium)
-                            Spacer()
-                            Text("今すぐ")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("支出の記録")
-                                .fontWeight(.semibold)
-                            Text("今日の支出記録を忘れていませんか？💰")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.gray.opacity(0.1))
-                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                    )
-                }
+//                // 通知内容のプレビュー
+//                Section(header: Text("通知内容プレビュー")) {
+//                    VStack(alignment: .leading, spacing: 8) {
+//                        HStack {
+//                            Image(systemName: "app.badge")
+//                                .foregroundColor(.blue)
+//                            Text("軽い家計簿")
+//                                .fontWeight(.medium)
+//                            Spacer()
+//                            Text("今すぐ")
+//                                .font(.caption)
+//                                .foregroundColor(.gray)
+//                        }
+//                        
+//                        VStack(alignment: .leading, spacing: 4) {
+//                            Text("支出の記録")
+//                                .fontWeight(.semibold)
+//                            Text("使った💰")
+//                                .font(.subheadline)
+//                                .foregroundColor(.secondary)
+//                        }
+//                    }
+//                    .padding()
+//                    .background(
+//                        RoundedRectangle(cornerRadius: 12)
+//                            .fill(Color.gray.opacity(0.1))
+//                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+//                    )
+//                }
                 
                 // 説明セクション
                 Section {
@@ -238,6 +268,8 @@ struct NotificationSettingsView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("• 複数の時刻を設定できます")
                             Text("• 各通知は個別にオン/オフできます")
+                            Text("• 時刻をタップまたは編集ボタンで時刻を変更")
+                            Text("• 左スワイプで編集、右スワイプで削除")
                             Text("• 毎日設定した時刻にリマインダーが届きます")
                             Text("• 支出記録を習慣化するのに役立ちます")
                         }
@@ -289,7 +321,23 @@ struct NotificationSettingsView: View {
                 AddNotificationTimeView()
             }
             .sheet(isPresented: $showingEditTimeSheet) {
-                EditNotificationTimeView(timeIndex: editingTimeIndex)
+                if let editingID = editingTimeID {
+                    EditNotificationTimeView(timeID: editingID)
+                        .onAppear {
+                            print("📱 編集シート表示開始 - ID: \(editingID)")
+                        }
+                }
+            }
+            .onChange(of: showingEditTimeSheet) { isShowing in
+                if isShowing {
+                    print("📱 編集シートフラグON - editingTimeID: \(String(describing: editingTimeID))")
+                } else {
+                    print("📱 編集シートフラグOFF")
+                    // シートが閉じられた時にIDをクリア
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        editingTimeID = nil
+                    }
+                }
             }
         }
     }
@@ -301,64 +349,73 @@ struct NotificationTimeRow: View {
     let onToggle: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
-    @State private var isEnabled: Bool
-    
-    init(time: NotificationTime, onToggle: @escaping () -> Void, onEdit: @escaping () -> Void, onDelete: @escaping () -> Void) {
-        self.time = time
-        self.onToggle = onToggle
-        self.onEdit = onEdit
-        self.onDelete = onDelete
-        self._isEnabled = State(initialValue: time.isEnabled)
-    }
     
     var body: some View {
         HStack(spacing: 16) {
             // 有効/無効切り替え
-            Toggle("", isOn: $isEnabled)
-                .onChange(of: isEnabled) { _ in
-                    onToggle()
+            Toggle("", isOn: Binding(
+                get: { time.isEnabled },
+                set: { _ in 
+                    print("📱 Toggle変更 - ID: \(time.id)")
+                    
+                    // ハプティックフィードバック
+                    let selectionFeedback = UISelectionFeedbackGenerator()
+                    selectionFeedback.selectionChanged()
+                    
+                    onToggle() 
                 }
+            ))
                 .labelsHidden()
             
-            // 時刻表示
-            VStack(alignment: .leading, spacing: 2) {
-                Text(time.displayTime)
-                    .font(.title2)
-                    .fontWeight(.medium)
-                    .foregroundColor(time.isEnabled ? .primary : .secondary)
-                
-                Text(time.isEnabled ? "有効" : "無効")
-                    .font(.caption)
-                    .foregroundColor(time.isEnabled ? .green : .gray)
+            // 時刻表示 - タップで編集
+            Button(action: {
+                print("📱 時刻表示をタップ - ID: \(time.id)")
+                onEdit()
+            }) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(time.displayTime)
+                        .font(.title2)
+                        .fontWeight(.medium)
+                        .foregroundColor(time.isEnabled ? .primary : .secondary)
+                    
+                    Text(time.isEnabled ? "有効" : "無効")
+                        .font(.caption)
+                        .foregroundColor(time.isEnabled ? .green : .gray)
+                }
             }
+            .buttonStyle(PlainButtonStyle())
             
             Spacer()
             
-            // 編集・削除ボタン
-            HStack(spacing: 8) {
-                Button(action: onEdit) {
+            // 編集ボタン（右側に余裕を持たせて配置）
+            Button(action: {
+                print("📱 編集ボタンをタップ - ID: \(time.id)")
+                onEdit()
+            }) {
+                HStack(spacing: 4) {
                     Image(systemName: "pencil")
                         .foregroundColor(.blue)
                         .font(.subheadline)
+                    Text("編集")
+                        .font(.caption)
+                        .foregroundColor(.blue)
                 }
-                
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .foregroundColor(.red)
-                        .font(.subheadline)
-                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.blue.opacity(0.1))
+                )
             }
+            .buttonStyle(PlainButtonStyle())
         }
         .padding(.vertical, 4)
-        .onChange(of: time.isEnabled) { newValue in
-            isEnabled = newValue
-        }
     }
 }
 
 // MARK: - 通知時刻追加ビュー
 struct AddNotificationTimeView: View {
-    @StateObject private var notificationManager = NotificationManager.shared
+    @ObservedObject private var notificationManager = NotificationManager.shared
     @Environment(\.dismiss) private var dismiss
     @State private var selectedDate = Date()
     
@@ -379,6 +436,10 @@ struct AddNotificationTimeView: View {
                         let calendar = Calendar.current
                         let hour = calendar.component(.hour, from: selectedDate)
                         let minute = calendar.component(.minute, from: selectedDate)
+                        
+                        // ハプティックフィードバック
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
                         
                         notificationManager.addNotificationTime(hour: hour, minute: minute)
                         dismiss()
@@ -407,15 +468,16 @@ struct AddNotificationTimeView: View {
 
 // MARK: - 通知時刻編集ビュー
 struct EditNotificationTimeView: View {
-    @StateObject private var notificationManager = NotificationManager.shared
+    @ObservedObject private var notificationManager = NotificationManager.shared
     @Environment(\.dismiss) private var dismiss
     @State private var selectedDate = Date()
-    let timeIndex: Int
+    @State private var hasInitialized = false
+    let timeID: UUID
     
     var body: some View {
         NavigationStack {
             Form {
-                if timeIndex < notificationManager.notificationTimes.count {
+                if let time = notificationManager.getNotificationTime(id: timeID) {
                     Section(header: Text("通知時刻を編集")) {
                         DatePicker(
                             "時刻を選択",
@@ -423,6 +485,9 @@ struct EditNotificationTimeView: View {
                             displayedComponents: .hourAndMinute
                         )
                         .datePickerStyle(.wheel)
+                        .onChange(of: selectedDate) { newDate in
+                            print("📱 DatePicker変更: \(DateFormatter.timeFormatter.string(from: newDate))")
+                        }
                     }
                     
                     Section {
@@ -431,7 +496,11 @@ struct EditNotificationTimeView: View {
                             let hour = calendar.component(.hour, from: selectedDate)
                             let minute = calendar.component(.minute, from: selectedDate)
                             
-                            notificationManager.updateNotificationTime(at: timeIndex, hour: hour, minute: minute)
+                            // ハプティックフィードバック
+                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                            impactFeedback.impactOccurred()
+                            
+                            notificationManager.updateNotificationTime(id: timeID, hour: hour, minute: minute)
                             dismiss()
                         }
                         .frame(maxWidth: .infinity)
@@ -441,6 +510,22 @@ struct EditNotificationTimeView: View {
                         .cornerRadius(10)
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets())
+                    }
+                } else {
+                    Section {
+                        VStack(spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.largeTitle)
+                                .foregroundColor(.orange)
+                            Text("通知時刻が見つかりません")
+                                .font(.headline)
+                                .foregroundColor(.secondary)
+                            Text("この時刻は削除された可能性があります")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
                     }
                 }
             }
@@ -453,16 +538,75 @@ struct EditNotificationTimeView: View {
                     }
                 }
             }
+            .task {
+                // iOS 15+のtaskを使用してより確実な初期化
+                await initializeTimeAsync()
+            }
             .onAppear {
-                if timeIndex < notificationManager.notificationTimes.count {
-                    let time = notificationManager.notificationTimes[timeIndex]
-                    let calendar = Calendar.current
-                    let components = DateComponents(hour: time.hour, minute: time.minute)
-                    selectedDate = calendar.date(from: components) ?? Date()
+                // iOS 14以下の場合のフォールバック
+                if !hasInitialized {
+                    initializeTime()
                 }
             }
         }
     }
+    
+    @MainActor
+    private func initializeTimeAsync() async {
+        guard !hasInitialized else { return }
+        
+        print("📱 編集画面初期化（async） - ID: \(timeID)")
+        
+        if let time = notificationManager.getNotificationTime(id: timeID) {
+            print("📱 時刻を発見: \(time.displayTime)")
+            let calendar = Calendar.current
+            let components = DateComponents(hour: time.hour, minute: time.minute)
+            
+            selectedDate = calendar.date(from: components) ?? Date()
+            hasInitialized = true
+            print("📱 DatePicker設定完了: \(time.displayTime)")
+        } else {
+            print("📱 時刻が見つかりません")
+            print("📱 現在の通知一覧: \(notificationManager.notificationTimes.map { "\($0.displayTime)(\($0.id))" })")
+            
+            selectedDate = Date()
+            hasInitialized = true
+        }
+    }
+    
+    private func initializeTime() {
+        print("📱 編集画面初期化 - ID: \(timeID)")
+        
+        if let time = notificationManager.getNotificationTime(id: timeID) {
+            print("📱 時刻を発見: \(time.displayTime)")
+            let calendar = Calendar.current
+            let components = DateComponents(hour: time.hour, minute: time.minute)
+            
+            // より確実な設定のため複数回試行
+            DispatchQueue.main.async {
+                selectedDate = calendar.date(from: components) ?? Date()
+                hasInitialized = true
+                print("📱 DatePicker設定完了: \(time.displayTime)")
+            }
+        } else {
+            print("📱 時刻が見つかりません")
+            print("📱 現在の通知一覧: \(notificationManager.notificationTimes.map { "\($0.displayTime)(\($0.id))" })")
+            
+            DispatchQueue.main.async {
+                selectedDate = Date()
+                hasInitialized = true
+            }
+        }
+    }
+}
+
+// DateFormatterの拡張
+extension DateFormatter {
+    static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter
+    }()
 }
 
 struct NotificationSettingsView_Previews: PreviewProvider {
