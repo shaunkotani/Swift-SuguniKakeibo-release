@@ -8,9 +8,9 @@ struct ExpensesView: View {
     @State private var expenseToDelete: Expense?
     @Environment(\.accessibilityVoiceOverEnabled) var voiceOverEnabled
     
-    // 🎯 タブ再選択によるフォーカス制御用（iOS 18未満では代替手段を使用）
+    // タブ再選択によるフォーカス制御用（iOS 18未満では代替手段を使用）
     @State private var searchFieldTrigger = false
-    // 🎹 キーボード表示状態管理
+    // キーボード表示状態管理
     @State private var isKeyboardVisible = false
     @FocusState private var isSearchFocused: Bool
 
@@ -455,9 +455,9 @@ struct ExpensesView: View {
         print("🔍 タブ再選択により検索フィールドをアクティブ化")
     }
     
-    // 🎯 iOS 18未満での検索フィールドフォーカス代替手段
+    // iOS 18未満での検索フィールドフォーカス代替手段
     private func focusSearchFieldFallback() {
-        print("🎯 focusSearchFieldFallback() 実行")
+        print("focusSearchFieldFallback() 実行")
         
         DispatchQueue.main.async {
             self.isSearchFocused = true
@@ -470,13 +470,13 @@ struct ExpensesView: View {
             // UISearchBarまたはUITextFieldを探す
             if let searchBar = subview as? UISearchBar {
                 searchBar.becomeFirstResponder()
-                print("🎯 UISearchBarにフォーカス設定完了")
+                print("UISearchBarにフォーカス設定完了")
                 return
             } else if let textField = subview as? UITextField,
                       subview.accessibilityIdentifier?.contains("search") == true ||
                       textField.placeholder?.contains("検索") == true {
                 textField.becomeFirstResponder()
-                print("🎯 UITextFieldにフォーカス設定完了")
+                print("UITextFieldにフォーカス設定完了")
                 return
             }
             
@@ -485,7 +485,7 @@ struct ExpensesView: View {
         }
     }
     
-    // MARK: - 🎹 キーボード管理
+    // MARK: - キーボード管理
     
     // キーボード表示・非表示の監視設定
     private func setupKeyboardObservers() {
@@ -497,7 +497,7 @@ struct ExpensesView: View {
             withAnimation(.easeOut(duration: 0.3)) {
                 isKeyboardVisible = true
             }
-            print("🎹 キーボード表示 - ツールバー表示")
+            print("キーボード表示 - ツールバー表示")
         }
         
         NotificationCenter.default.addObserver(
@@ -524,7 +524,7 @@ struct ExpensesView: View {
             name: UIResponder.keyboardWillHideNotification,
             object: nil
         )
-        print("🎹 キーボード監視解除")
+        print("キーボード監視解除")
     }
     
     // キーボードを閉じる
@@ -541,14 +541,14 @@ struct ExpensesView: View {
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
         impactFeedback.impactOccurred()
         
-        print("🎹 キーボードを手動で閉じました")
+        print("キーボードを手動で閉じました")
     }
     
     // スクロール開始時の追加処理（必要に応じて）
     private func handleScrollBegan() {
         // スクロール開始時にキーボードを閉じる（.scrollDismissesKeyboardと併用）
         if isKeyboardVisible {
-            print("🎹 スクロール開始によりキーボードを閉じます")
+            print("スクロール開始によりキーボードを閉じます")
             hideKeyboard()
         }
     }

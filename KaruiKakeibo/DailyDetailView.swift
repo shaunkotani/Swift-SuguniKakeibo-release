@@ -2,8 +2,6 @@
 //  DailyDetailView.swift (修正版)
 //  Suguni-Kakeibo-2
 //
-//  Created by AI Assistant on 2025/08/05.
-//
 
 import SwiftUI
 

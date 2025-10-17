@@ -487,7 +487,7 @@ struct InputView: View {
         }
     }
     
-    // 🆕 再帰的にScrollViewを探してスクロール位置をリセットする関数
+    // 再帰的にScrollViewを探してスクロール位置をリセットする関数
     private func findAndScrollToTop(in view: UIView) {
         // UIScrollViewまたはその派生クラスを探す
         for subview in view.subviews {
@@ -877,7 +877,7 @@ struct CategoryPickerView: View {
     }
 }
 
-// カテゴリボタンのビュー（修正版）
+// カテゴリボタンのビュー
 struct CategoryButtonView: View {
     let category: CategoryInfo
     let isSelected: Bool
