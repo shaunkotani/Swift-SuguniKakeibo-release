@@ -309,7 +309,7 @@ struct NotificationSettingsView: View {
                 case .initial:
                     Text("通知を有効にするには、設定アプリで通知を許可してください。")
                 case .denied:
-                    Text("通知権限が拒否されています。設定アプリの「軽い家計簿」→「通知」で許可してください。")
+                    Text("通知権限が拒否されています。設定アプリの「かるい家計簿」→「通知」で許可してください。")
                 }
             }
             .alert("テスト通知を送信しました", isPresented: $showingTestAlert) {

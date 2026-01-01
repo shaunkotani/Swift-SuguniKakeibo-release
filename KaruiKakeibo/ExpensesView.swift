@@ -284,13 +284,13 @@ struct ExpensesView: View {
                             isDateSearch: isDateSearch(searchText)
                         )
                         .accessibilityElement(children: .combine)
-                        .accessibilityLabel("検索結果なし。\(searchText)に一致する支出が見つかりません")
-                        .accessibilityHint("別のキーワードで検索してください")
+                        .accessibilityLabel("検索結果なし。\(searchText)に一致する支出が見つかりません！")
+                        .accessibilityHint("別のキーワードで検索？")
                     } else if viewModel.expenses.isEmpty {
                         GeneralEmptyStateView()
                             .accessibilityElement(children: .combine)
-                            .accessibilityLabel("支出履歴がありません")
-                            .accessibilityHint("入力タブから支出を追加してください")
+                            .accessibilityLabel("支出履歴なし")
+                            .accessibilityHint("入力タブから支出を追加")
                     }
                 }
             }
@@ -778,12 +778,12 @@ struct GeneralEmptyStateView: View {
                 .accessibilityHidden(true)
             
             VStack(spacing: 8) {
-                Text("支出履歴がありません")
+                Text("支出履歴なし")
                     .font(.headline)
                     .foregroundColor(.secondary)
                     .accessibilityHidden(true)
                 
-                Text("「入力」タブから支出を追加してください")
+                Text("「入力」タブから支出を追加")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .accessibilityHidden(true)

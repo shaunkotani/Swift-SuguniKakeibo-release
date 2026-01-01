@@ -273,28 +273,28 @@ struct EditExpenseView: View {
         // より厳密な金額バリデーション
         guard !amount.isEmpty else {
             alertType = .error
-            alertMessage = "金額を入力してください。"
+            alertMessage = "金額を入力"
             showAlert = true
             return
         }
         
         guard let parsedAmount = Double(amount) else {
             alertType = .error
-            alertMessage = "金額は数値で入力してください。"
+            alertMessage = "金額は数値で入力"
             showAlert = true
             return
         }
         
         guard parsedAmount > 0 else {
             alertType = .error
-            alertMessage = "金額は0円より大きい値を入力してください。"
+            alertMessage = "金額は0円より大きい値を入力"
             showAlert = true
             return
         }
         
         guard parsedAmount <= 99999999999 else {
             alertType = .error
-            alertMessage = "金額は999億円以下で入力してください。"
+            alertMessage = "金額は999億円以下で入力"
             showAlert = true
             return
         }
@@ -408,26 +408,26 @@ struct EditCategoryPickerView: View {
                 }
             }
             
-            // 現在選択されているカテゴリを表示
-            if let currentCategory = displayCategories.first(where: { $0.id == selectedCategoryId }) {
-                HStack {
-                    Image(systemName: "tag.fill")
-                        .foregroundColor(.orange)
-                        .font(.caption)
-                    Text("選択中: \(currentCategory.name)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    if !visibleCategoryIds.contains(selectedCategoryId) {
-                        Text("(非表示)")
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                            .italic()
-                    }
-                }
-                .padding(.top, 8)
-                .animation(.easeInOut(duration: 0.2), value: selectedCategoryId)
-            }
+//            // 現在選択されているカテゴリを表示
+//            if let currentCategory = displayCategories.first(where: { $0.id == selectedCategoryId }) {
+//                HStack {
+//                    Image(systemName: "tag.fill")
+//                        .foregroundColor(.orange)
+//                        .font(.caption)
+//                    Text("選択中: \(currentCategory.name)")
+//                        .font(.caption)
+//                        .foregroundColor(.secondary)
+//                    
+//                    if !visibleCategoryIds.contains(selectedCategoryId) {
+//                        Text("(非表示)")
+//                            .font(.caption)
+//                            .foregroundColor(.orange)
+//                            .italic()
+//                    }
+//                }
+//                .padding(.top, 8)
+//                .animation(.easeInOut(duration: 0.2), value: selectedCategoryId)
+//            }
         }
         .padding()
     }

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		75B1AAE72F061544005BEAE8 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 75B1AAE62F061544005BEAE8 /* ZIPFoundation */; };
 		75D02DAA2E846F4D005DC261 /* iOS26AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 75D02DA92E846F4D005DC261 /* iOS26AppIcon.icon */; };
 		75DDDC232E844CFC009F3CC3 /* UserNotificationsUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 75DDDC212E844CFC009F3CC3 /* UserNotificationsUI.framework */; };
 		75DDDC242E844CFC009F3CC3 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 75DDDC222E844CFC009F3CC3 /* UserNotifications.framework */; };
@@ -47,6 +48,7 @@
 			files = (
 				75DDDC232E844CFC009F3CC3 /* UserNotificationsUI.framework in Frameworks */,
 				75DDDC242E844CFC009F3CC3 /* UserNotifications.framework in Frameworks */,
+				75B1AAE72F061544005BEAE8 /* ZIPFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -100,6 +102,7 @@
 			);
 			name = "かるい家計簿！";
 			packageProductDependencies = (
+				75B1AAE62F061544005BEAE8 /* ZIPFoundation */,
 			);
 			productName = "Suguni-Kakeibo-2";
 			productReference = 75DE25782E38A4F5006B00C6 /* かるい家計簿！.app */;
@@ -130,6 +133,9 @@
 			);
 			mainGroup = 75DE256F2E38A4F5006B00C6;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				75B1AAE52F061544005BEAE8 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 75DE25792E38A4F5006B00C6 /* Products */;
 			projectDirPath = "";
@@ -311,7 +317,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.0;
+				MARKETING_VERSION = 3.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shaunkotany.karuikakeibo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -344,7 +350,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.0;
+				MARKETING_VERSION = 3.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shaunkotany.karuikakeibo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -375,6 +381,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		75B1AAE52F061544005BEAE8 /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/weichsel/ZIPFoundation.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.20;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		75B1AAE62F061544005BEAE8 /* ZIPFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 75B1AAE52F061544005BEAE8 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
+			productName = ZIPFoundation;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 75DE25702E38A4F5006B00C6 /* Project object */;
 }

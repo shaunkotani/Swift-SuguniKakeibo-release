@@ -132,7 +132,7 @@ struct InputView: View {
                             } label: {
                                 HStack(spacing: 6) {
                                     Image(systemName: "clock.arrow.circlepath")
-                                    Text("今に戻す")
+                                    Text("現在時刻に設定")
                                 }
                             }
                             .font(.caption)
@@ -554,7 +554,7 @@ struct InputView: View {
         guard !amount.isEmpty else {
             let errorFeedback = UINotificationFeedbackGenerator()
             errorFeedback.notificationOccurred(.error)
-            alertMessage = "金額を入力してください。"
+            alertMessage = "金額を入力"
             showAlert = true
             return
         }
@@ -562,7 +562,7 @@ struct InputView: View {
         guard let parsedAmount = Double(amount) else {
             let errorFeedback = UINotificationFeedbackGenerator()
             errorFeedback.notificationOccurred(.error)
-            alertMessage = "金額は数値で入力してください。"
+            alertMessage = "金額は数値で入力"
             showAlert = true
             return
         }
@@ -570,7 +570,7 @@ struct InputView: View {
         guard parsedAmount > 0 else {
             let errorFeedback = UINotificationFeedbackGenerator()
             errorFeedback.notificationOccurred(.error)
-            alertMessage = "金額は0円より大きい値を入力してください。"
+            alertMessage = "金額は0円より大きい値を入力"
             showAlert = true
             return
         }
@@ -578,7 +578,7 @@ struct InputView: View {
         guard parsedAmount <= 99999999999 else {
             let errorFeedback = UINotificationFeedbackGenerator()
             errorFeedback.notificationOccurred(.error)
-            alertMessage = "金額は999億円以下で入力してください。"
+            alertMessage = "金額は999億円以下で入力"
             showAlert = true
             return
         }
@@ -588,7 +588,7 @@ struct InputView: View {
         guard visibleCategories.contains(where: { $0.id == selectedCategoryId }) else {
             let errorFeedback = UINotificationFeedbackGenerator()
             errorFeedback.notificationOccurred(.error)
-            alertMessage = "選択されたカテゴリが表示設定されていません。カテゴリを再選択してください。"
+            alertMessage = "選択されたカテゴリは非表示です。カテゴリを再選択してください。"
             showAlert = true
             return
         }
@@ -597,7 +597,7 @@ struct InputView: View {
         if date > Date() {
             let errorFeedback = UINotificationFeedbackGenerator()
             errorFeedback.notificationOccurred(.error)
-            alertMessage = "未来の日時は設定できません。"
+            alertMessage = "未来の日時は設定できません！"
             showAlert = true
             return
         }
@@ -838,30 +838,30 @@ struct CategoryPickerView: View {
                     }
                 }
                 
-                // 現在選択されているカテゴリを表示
-                if let currentCategory = displayCategories.first(where: { $0.id == selectedCategoryId }) {
-                    HStack {
-                        Image(systemName: "tag.fill")
-                            .foregroundColor(.orange)
-                            .font(.caption)
-                        Text("選択中: \(currentCategory.name)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.top, 8)
-                    .animation(.easeInOut(duration: 0.2), value: selectedCategoryId)
-                } else if !displayCategories.isEmpty {
-                    // 選択されたカテゴリが表示リストにない場合、最初のカテゴリを自動選択
-                    Text("カテゴリを選択してください")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.top, 8)
-                        .onAppear {
-                            if let first = displayCategories.first {
-                                selectedCategoryId = first.id
-                            }
-                        }
-                }
+//                // 現在選択されているカテゴリを表示
+//                if let currentCategory = displayCategories.first(where: { $0.id == selectedCategoryId }) {
+//                    HStack {
+//                        Image(systemName: "tag.fill")
+//                            .foregroundColor(.orange)
+//                            .font(.caption)
+//                        Text("選択中: \(currentCategory.name)")
+//                            .font(.caption)
+//                            .foregroundColor(.secondary)
+//                    }
+//                    .padding(.top, 8)
+//                    .animation(.easeInOut(duration: 0.2), value: selectedCategoryId)
+//                } else if !displayCategories.isEmpty {
+//                    // 選択されたカテゴリが表示リストにない場合、最初のカテゴリを自動選択
+//                    Text("カテゴリを選択")
+//                        .font(.caption)
+//                        .foregroundColor(.secondary)
+//                        .padding(.top, 8)
+//                        .onAppear {
+//                            if let first = displayCategories.first {
+//                                selectedCategoryId = first.id
+//                            }
+//                        }
+//                }
             }
         }
         .padding()

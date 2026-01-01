@@ -72,7 +72,7 @@ struct CategoryManagementView: View {
                         Text("カテゴリがありません")
                             .font(.headline)
                             .foregroundColor(.secondary)
-                        Text("上のボタンからカテゴリを追加してください")
+                        Text("上のボタンからカテゴリを追加")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -556,7 +556,7 @@ struct CategoryEditView: View {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         
         guard !trimmedName.isEmpty else {
-            alertMessage = "カテゴリ名を入力してください。"
+            alertMessage = "カテゴリ名を入力"
             showAlert = true
             return
         }
@@ -568,7 +568,7 @@ struct CategoryEditView: View {
         }
         
         if isDuplicate {
-            alertMessage = "同じ名前のカテゴリが既に存在します。"
+            alertMessage = "同じ名前のカテゴリが既に存在しています"
             showAlert = true
             return
         }

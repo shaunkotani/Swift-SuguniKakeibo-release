@@ -129,7 +129,7 @@ struct CategoryDetailView: View {
                             .font(.headline)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
-                        Text("「入力」タブから支出を追加してください")
+                        Text("「入力」タブから支出を追加")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
