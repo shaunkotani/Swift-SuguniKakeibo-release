@@ -1,15 +1,7 @@
-//
-//  SettingView.swift (レスポンス改善版)
-//  Suguni-Kakeibo-2
-//
-//  Created by 大谷駿介 on 2025/07/29.
-//
-
 import SwiftUI
 
 struct SettingView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
-//    @AppStorage("currency") private var currency = "円"
     @AppStorage("notificationsEnabled") private var notificationsEnabled = true
     @AppStorage("autoFocusAfterSave") private var autoFocusAfterSave = false
     @State private var showingExportView = false
@@ -18,6 +10,7 @@ struct SettingView: View {
     @State private var showingResetCategoriesAlert = false
     @State private var showingResetSettingsAlert = false
     @State private var isResetingCategories = false
+    @State private var showingImportView = false
 //    @FocusState private var isCurrencyFocused: Bool
     
     var body: some View {
@@ -111,6 +104,15 @@ struct SettingView: View {
                             title: "CSVエクスポート",
                             color: .blue
                         )
+                    }
+                    .buttonStyle(ResponsiveButtonStyle())
+                    
+                    Button(action: {
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
+                        showingImportView = true
+                    }) {
+                        DataManagementButtonView(icon: "square.and.arrow.down", title: "CSVインポート", color: .green)
                     }
                     .buttonStyle(ResponsiveButtonStyle())
                 }
@@ -319,6 +321,10 @@ struct SettingView: View {
             }
             .sheet(isPresented: $showingCategoryManagement) {
                 CategoryManagementView()
+                    .environmentObject(viewModel)
+            }
+            .sheet(isPresented: $showingImportView) {
+                CSVImportView()
                     .environmentObject(viewModel)
             }
             .alert("デフォルトカテゴリをリセット", isPresented: $showingResetCategoriesAlert) {

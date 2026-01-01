@@ -1,10 +1,3 @@
-//
-//  ExpenseDatabaseManager.swift (修正版)
-//  Suguni-Kakeibo-2
-//
-//  Created by 大谷駿介 on 2025/07/29.
-//
-
 import Foundation
 import SQLite3
 
@@ -34,6 +27,148 @@ class ExpenseDatabaseManager {
     func rollbackTransaction() {
         guard db != nil else { return }
         sqlite3_exec(db, "ROLLBACK TRANSACTION", nil, nil, nil)
+    }
+    
+    func ensureUnknownCategoryExists() {
+        _ = getOrCreateCategoryId(name: "不明", icon: "questionmark.circle", color: "gray", sortOrder: 999)
+    }
+
+    func getOrCreateCategoryId(name: String, icon: String, color: String, sortOrder: Int) -> Int {
+        guard db != nil else { return 0 }
+
+        // 既にあるならID取得
+        let selectSQL = "SELECT id FROM Category WHERE name = ? AND isActive = 1 LIMIT 1;"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, selectSQL, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, (name as NSString).utf8String, -1, nil)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                let id = Int(sqlite3_column_int(stmt, 0))
+                sqlite3_finalize(stmt)
+                return id
+            }
+        }
+        sqlite3_finalize(stmt)
+
+        // 無ければ作る
+        beginTransaction()
+        let insertSQL = """
+        INSERT INTO Category (name, icon, color, isDefault, isVisible, isActive, sortOrder, createdAt)
+        VALUES (?, ?, ?, 0, 1, 1, ?, datetime('now'));
+        """
+        var insertStmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, insertSQL, -1, &insertStmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(insertStmt, 1, (name as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(insertStmt, 2, (icon as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(insertStmt, 3, (color as NSString).utf8String, -1, nil)
+            sqlite3_bind_int(insertStmt, 4, Int32(sortOrder))
+
+            if sqlite3_step(insertStmt) == SQLITE_DONE {
+                let newId = Int(sqlite3_last_insert_rowid(db))
+                sqlite3_finalize(insertStmt)
+                commitTransaction()
+                return newId
+            }
+        }
+        sqlite3_finalize(insertStmt)
+        rollbackTransaction()
+        return 0
+    }
+    
+    func insertExpenses(expenses: [Expense]) {
+        guard db != nil else { return }
+        guard !expenses.isEmpty else { return }
+
+        beginTransaction()
+        let sql = "INSERT INTO Expense (amount, date, note, categoryId, userId) VALUES (?, ?, ?, ?, ?);"
+        var stmt: OpaquePointer?
+
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) != SQLITE_OK {
+            rollbackTransaction()
+            return
+        }
+
+        let formatter = ISO8601DateFormatter()
+
+        for e in expenses {
+            sqlite3_reset(stmt)
+            sqlite3_clear_bindings(stmt)
+
+            sqlite3_bind_double(stmt, 1, e.amount)
+            let dateString = formatter.string(from: e.date)
+            sqlite3_bind_text(stmt, 2, (dateString as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(stmt, 3, (e.note as NSString).utf8String, -1, nil)
+            sqlite3_bind_int(stmt, 4, Int32(e.categoryId))
+            sqlite3_bind_int(stmt, 5, Int32(e.userId))
+
+            if sqlite3_step(stmt) != SQLITE_DONE {
+                sqlite3_finalize(stmt)
+                rollbackTransaction()
+                return
+            }
+        }
+
+        sqlite3_finalize(stmt)
+        commitTransaction()
+    }
+    
+    func createCategoriesIfNeeded(names: [String], defaultIcon: String, defaultColor: String) {
+        guard db != nil else { return }
+        guard !names.isEmpty else { return }
+
+        // 既存最大sortOrderの次から割り当て
+        var sort = getMaxCategorySortOrder() + 1
+
+        beginTransaction()
+
+        let insertSQL = """
+        INSERT INTO Category (name, icon, color, isDefault, isVisible, isActive, sortOrder, createdAt)
+        VALUES (?, ?, ?, 0, 1, 1, ?, datetime('now'));
+        """
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, insertSQL, -1, &stmt, nil) != SQLITE_OK {
+            rollbackTransaction()
+            return
+        }
+
+        for name in names {
+            // 念のため空はスキップ
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { continue }
+
+            sqlite3_reset(stmt)
+            sqlite3_clear_bindings(stmt)
+
+            sqlite3_bind_text(stmt, 1, (trimmed as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(stmt, 2, (defaultIcon as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(stmt, 3, (defaultColor as NSString).utf8String, -1, nil)
+            sqlite3_bind_int(stmt, 4, Int32(sort))
+
+            if sqlite3_step(stmt) != SQLITE_DONE {
+                sqlite3_finalize(stmt)
+                rollbackTransaction()
+                return
+            }
+
+            sort += 1
+        }
+
+        sqlite3_finalize(stmt)
+        commitTransaction()
+    }
+
+    private func getMaxCategorySortOrder() -> Int {
+        guard db != nil else { return 0 }
+        let sql = "SELECT COALESCE(MAX(sortOrder), 0) FROM Category;"
+        var stmt: OpaquePointer?
+        var maxVal = 0
+
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                maxVal = Int(sqlite3_column_int(stmt, 0))
+            }
+        }
+        sqlite3_finalize(stmt)
+        return maxVal
     }
 
     private func openDatabase() {
