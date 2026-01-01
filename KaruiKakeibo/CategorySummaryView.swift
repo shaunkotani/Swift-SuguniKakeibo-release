@@ -67,9 +67,9 @@ struct CategoryChartView: View {
     }
     
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 10) {
             // チャートセクション
-            VStack(spacing: 12) {
+            VStack(spacing: 8) {
                 ZStack {
                     // Swift Charts版の円グラフ
                     if #available(iOS 16.0, *) {
@@ -84,11 +84,7 @@ struct CategoryChartView: View {
                                 .cornerRadius(2.0)
                                 .opacity(0.85)
                             }
-                            .id(monthFormatter.string(from: selectedMonth))
                             .frame(width: 200, height: 200)
-                            .transaction { transaction in
-                                transaction.disablesAnimations = true
-                            }
                         } else {
                             // データがない場合は空のプレースホルダー
                             EmptyView()
@@ -186,13 +182,9 @@ struct CategoryChartView: View {
                     .fill(Color.blue.opacity(0.1))
                     .stroke(Color.blue.opacity(0.3), lineWidth: 1)
             )
+            Spacer().frame(height: 16)
         }
         .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.gray.opacity(0.05))
-                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-        )
     }
 }
 
@@ -278,21 +270,125 @@ struct ChartDataItem: Identifiable {
 }
 
 
+/// New definition of MonthSelectorView to fix the error "Cannot find 'MonthSelectorView' in scope"
+struct MonthSelectorView: View {
+    @Binding var selectedMonth: Date
+    private let monthFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy年M月"
+        formatter.locale = Locale(identifier: "ja_JP")
+        return formatter
+    }()
+    
+    var body: some View {
+        HStack {
+            Button(action: {
+                withAnimation {
+                    selectedMonth = Calendar.current.date(byAdding: .month, value: -1, to: selectedMonth) ?? selectedMonth
+                }
+            }) {
+                Image(systemName: "chevron.left")
+                    .font(.title2)
+                    .foregroundColor(.primary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
+            }
+            Spacer()
+            Text(monthFormatter.string(from: selectedMonth))
+                .font(.title2)
+                .fontWeight(.semibold)
+            Spacer()
+            Button(action: {
+                withAnimation {
+                    selectedMonth = Calendar.current.date(byAdding: .month, value: 1, to: selectedMonth) ?? selectedMonth
+                }
+            }) {
+                Image(systemName: "chevron.right")
+                    .font(.title2)
+                    .foregroundColor(.primary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
+            }
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+// --- スワイプで月を切り替えるページング対応 ---
+
+//  月リスト (前後2年分)
+private let months: [Date] = {
+    let calendar = Calendar.current
+    let today = Date()
+    let startMonth = calendar.date(byAdding: .month, value: -24, to: today) ?? today
+    return (0..<49).compactMap { calendar.date(byAdding: .month, value: $0, to: startMonth) }
+}()
+
+// MARK: - PreferenceKey to track scroll offset
+private struct ScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+// --- ここから CollapsibleSummaryHeader の修正版 ---
+struct CollapsibleSummaryHeader: View {
+    let month: Date
+    let chartTotals: [(category: String, categoryId: Int, total: Double)]
+    let totalAmount: Double
+    let viewModel: ExpenseViewModel
+    let baseHeight: CGFloat
+    let minHeight: CGFloat
+    let scrollOffset: CGFloat
+    let monthFormatter: DateFormatter
+    let hideThreshold: CGFloat = 100
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // タイトルはスクロールで消える
+            Spacer().frame(height: 24)
+            Text("カテゴリ別集計")
+                .font(.title)
+                .fontWeight(.bold)
+                .padding(.top, 8)
+                .opacity(Double(max(0, 1 - scrollOffset/hideThreshold)))
+                .scaleEffect(max(0.9, 1 - (scrollOffset/(hideThreshold*2))))
+                .animation(.easeInOut(duration: 0.18), value: scrollOffset)
+            // 年月(月表示)は常に中央表示
+            Text(monthFormatter.string(from: month))
+                .font(.title2)
+                .fontWeight(.semibold)
+                .frame(maxWidth: .infinity, alignment: .center)
+
+            // チャートは常に中央
+            CategoryChartView(
+                categoryTotals: chartTotals,
+                totalAmount: totalAmount,
+                selectedMonth: month,
+                viewModel: viewModel
+            )
+        }
+        .frame(height: max(minHeight, baseHeight - scrollOffset))
+        .animation(.easeInOut(duration: 0.18), value: scrollOffset)
+    }
+}
+// --- 修正ここまで ---
+
 struct CategorySummaryView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
     @Binding var selectedTab: Int
     @Binding var shouldFocusAmount: Bool
-    @State private var categoryTotals: [(category: String, categoryId: Int, total: Double)] = []
-    @State private var selectedMonth = Date()
+    
+    @State private var selectedMonthIndex: Int = 24 // 現在月
     @State private var isRefreshing = false
+    @State private var scrollOffset: CGFloat = 0
+    @State private var animateScrollReset: Bool = false
+    private let scrollToTopAnchor = "scrollToTopAnchor"
+    @State private var scrollProxyRef: ScrollViewProxy? = nil
     
-    private var totalAmount: Double {
-        categoryTotals.reduce(0) { $0 + $1.total }
-    }
-    
-    private var hasAnyExpenses: Bool {
-        !categoryTotals.isEmpty && categoryTotals.contains { $0.total > 0 }
-    }
+    private let baseHeaderHeight: CGFloat = 370
+    private let minHeaderHeight: CGFloat = 160
     
     private var monthFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -301,97 +397,133 @@ struct CategorySummaryView: View {
         return formatter
     }
     
-    // MARK: - 分割: ヘッダ背景のビュー（型を単純化）
-    @ViewBuilder
-    private func headerBackground() -> some View {
-        if #available(iOS 26.0, *) {
-            Color.clear
-        } else {
-            Rectangle().fill(.ultraThinMaterial)
-        }
-    }
-    
-    // MARK: - 分割: セクション本体（チャート/リスト or 空状態）
-    @ViewBuilder
-    private func contentSection() -> some View {
-        if hasAnyExpenses && totalAmount > 0 {
-            CategoryChartView(
-                categoryTotals: categoryTotals,
-                totalAmount: totalAmount,
-                selectedMonth: selectedMonth,
-                viewModel: viewModel
-            )
-            .padding(.horizontal)
-            .padding(.bottom, 16)
-
-            LazyVStack(spacing: 0) {
-                ForEach(categoryTotals, id: \.categoryId) { item in
-                    NavigationLink(destination: CategoryDetailView(
-                        categoryName: item.category,
-                        categoryId: item.categoryId,
-                        selectedMonth: selectedMonth
-                    )) {
-                        CategoryRowView(
-                            category: item.category,
-                            categoryId: item.categoryId,
-                            total: item.total,
-                            percentage: totalAmount > 0 ? (item.total / totalAmount) * 100 : 0
-                        )
-                        .environmentObject(viewModel)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-
-                    if item.categoryId != categoryTotals.last?.categoryId {
-                        Divider()
-                            .padding(.horizontal, 16)
-                    }
-                }
-            }
-            .background(Color(UIColor.systemBackground))
-            .cornerRadius(12)
-            .padding(.horizontal)
-        } else {
-            EmptyStateView(
-                selectedMonth: selectedMonth,
-                monthFormatter: monthFormatter,
-                onAddExpense: {
-                    navigateToInputTab()
-                }
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .refreshable {
-                await refreshData()
-            }
-        }
-    }
-    
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                    Section {
-                        contentSection()
-                    } header: {
-                        MonthSelectorView(selectedMonth: $selectedMonth)
-                            .padding(.horizontal)
-                            .padding(.bottom, 8)
-                            .background(headerBackground())
+            VStack(spacing: 0) {
+                TabView(selection: $selectedMonthIndex) {
+                    ForEach(months.indices, id: \.self) { idx in
+                        let month = months[idx]
+                        // 月ごとのカテゴリ集計と合計金額を事前取得
+                        let categoryTotalsForMonth = getCategoryTotals(for: month)
+                        let totalAmountForMonth = getTotalAmount(for: month)
+                        
+                        ScrollViewReader { proxy in
+                            ScrollView(.vertical, showsIndicators: false) {
+                                Color.clear.frame(height: 0).id(scrollToTopAnchor)
+                                VStack(spacing: 0) {
+                                    // GeometryReaderでScrollViewのoffsetをPreferenceに書き込むための透明ビュー
+                                    GeometryReader { geo -> Color in
+                                        let offset = geo.frame(in: .named("scroll")).minY
+                                        DispatchQueue.main.async {
+                                            // offsetはスクロールアップで負になるため0以上に補正して渡す
+                                            self.scrollOffset = max(0, -offset)
+                                        }
+                                        return Color.clear
+                                    }
+                                    .frame(height: 0)
+                                    
+                                    // コンテンツの一番上にヘッダーを置く（高さは0でも実際はCollapsibleSummaryHeaderを外に出している）
+                                    // ここは空のSpacerなどで高さ調整しないので0としておく
+                                    
+                                    // コンテンツ本体
+                                    VStack(spacing: 0) {
+                                        // 空のSpacerを入れてヘッダー分のスペースを確保し
+                                        // ヘッダーはZStack外に置くことで重ねて表示可能にする
+                                        Spacer().frame(height: baseHeaderHeight)
+                                        
+                                        if !categoryTotalsForMonth.isEmpty && totalAmountForMonth > 0 {
+                                            LazyVStack(spacing: 0) {
+                                                ForEach(categoryTotalsForMonth, id: \.categoryId) { item in
+                                                    NavigationLink(destination: CategoryDetailView(
+                                                        categoryName: item.category,
+                                                        categoryId: item.categoryId,
+                                                        selectedMonth: month
+                                                    )) {
+                                                        CategoryRowView(
+                                                            category: item.category,
+                                                            categoryId: item.categoryId,
+                                                            total: item.total,
+                                                            percentage: totalAmountForMonth > 0 ? (item.total / totalAmountForMonth) * 100 : 0
+                                                        )
+                                                        .environmentObject(viewModel)
+                                                    }
+                                                    .buttonStyle(PlainButtonStyle())
+                                                    .padding(.horizontal, 16)
+                                                    .padding(.vertical, 8)
+                                                    if item.categoryId != categoryTotalsForMonth.last?.categoryId {
+                                                        Divider()
+                                                            .padding(.horizontal, 16)
+                                                    }
+                                                }
+                                            }
+                                            .background(Color(UIColor.systemBackground))
+                                            .cornerRadius(12)
+                                            .padding(.horizontal)
+                                        } else {
+                                            EmptyStateView(
+                                                selectedMonth: month,
+                                                monthFormatter: monthFormatter,
+                                                onAddExpense: {
+                                                    navigateToInputTab()
+                                                }
+                                            )
+                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        }
+                                        Spacer()
+                                    }
+                                }
+                            }
+                            .coordinateSpace(name: "scroll")
+                            .onAppear {
+                                self.scrollProxyRef = proxy
+                            }
+                        }
+                        .tag(idx)
+                        // ZStackでヘッダーを重ねて表示
+                        .overlay(
+                            CollapsibleSummaryHeader(
+                                month: month,
+                                chartTotals: categoryTotalsForMonth,
+                                totalAmount: totalAmountForMonth,
+                                viewModel: viewModel,
+                                baseHeight: baseHeaderHeight,
+                                minHeight: minHeaderHeight,
+                                scrollOffset: scrollOffset,
+                                monthFormatter: monthFormatter
+                            )
+                            .frame(maxWidth: .infinity)
+                            .background(Color(UIColor.systemBackground).opacity(scrollOffset > 0 ? 0.95 : 1.0))
+                            .clipped()
+                            , alignment: .top
+                        )
                     }
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .animation(.easeInOut(duration: 0.3), value: selectedMonthIndex)
             }
-            .navigationTitle("カテゴリ別集計")
-            .navigationBarTitleDisplayMode(.large)
         }
         .onAppear {
-            fetchCategoryTotals()
+            // 選択中月の集計計算
+            // (必要に応じて更新等を行う)
         }
         .onChange(of: viewModel.expenses) { _, _ in
-            fetchCategoryTotals()
+            // 状態変化時の再描画等
         }
-        .onChange(of: selectedMonth) { _, _ in
-            fetchCategoryTotals()
+        .onChange(of: selectedMonthIndex) { _, _ in
+            // 月ページ変更時の追加処理
+            // スクロールオフセットをリセット
+            scrollOffset = 0
+            // ScrollViewReader経由でスクロール位置をトップに戻す
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                NotificationCenter.default.post(name: .init("ScrollViewCategorySummaryToTop"), object: nil)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ScrollViewCategorySummaryToTop"))) { _ in
+            if let scrollProxy = scrollProxyRef {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    scrollProxy.scrollTo(scrollToTopAnchor, anchor: .top)
+                }
+            }
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -408,28 +540,25 @@ struct CategorySummaryView: View {
         }
     }
     
-    private func fetchCategoryTotals() {
+    // --- 月ごとのカテゴリ集計取得関数 ---
+    private func getCategoryTotals(for month: Date) -> [(category: String, categoryId: Int, total: Double)] {
         let calendar = Calendar.current
-        let targetMonth = calendar.component(.month, from: selectedMonth)
-        let targetYear = calendar.component(.year, from: selectedMonth)
-        
-        // 選択された月の支出のみをフィルタリング
+        let targetMonth = calendar.component(.month, from: month)
+        let targetYear = calendar.component(.year, from: month)
         let filteredExpenses = viewModel.expenses.filter { expense in
-            let month = calendar.component(.month, from: expense.date)
-            let year = calendar.component(.year, from: expense.date)
-            return month == targetMonth && year == targetYear
+            let monthVal = calendar.component(.month, from: expense.date)
+            let yearVal = calendar.component(.year, from: expense.date)
+            return monthVal == targetMonth && yearVal == targetYear
         }
-        
-        // カテゴリ別集計を効率化
         let expensesByCategory = Dictionary(grouping: filteredExpenses) { $0.categoryId }
-        
-        categoryTotals = viewModel.categories.compactMap { category in
+        return viewModel.categories.compactMap { category in
             let expenses = expensesByCategory[category.id] ?? []
             let total = expenses.reduce(0) { $0 + $1.amount }
             return (category: category.name, categoryId: category.id, total: total)
         }.sorted { $0.total > $1.total }
-        
-        print("📊 カテゴリ別集計更新: \(categoryTotals.count)カテゴリ, 合計: ¥\(totalAmount)")
+    }
+    private func getTotalAmount(for month: Date) -> Double {
+        getCategoryTotals(for: month).reduce(0) { $0 + $1.total }
     }
     
     private func refreshData() async {

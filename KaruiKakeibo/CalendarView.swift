@@ -17,7 +17,17 @@ struct CalendarView: View {
     @Binding var selectedTab: Int
     @Binding var shouldFocusAmount: Bool
     @State private var dailyTotals: [String: Double] = [:]
-    @State private var selectedMonth = Date()
+    // ⚡︎ 変更: selectedMonth → selectedMonthIndex と months配列
+    @State private var selectedMonthIndex: Int = 24
+    private let months: [Date] = {
+        let calendar = Calendar.current
+        let today = Date()
+        // -24ヶ月から+24ヶ月まで計算し配列化
+        return (-24...24).compactMap { offset in
+            calendar.date(byAdding: .month, value: offset, to: today)
+        }
+    }()
+    
     @State private var isCalculating = false
     @State private var lastCalculationHash: Int = 0
     @State private var selectedDate: Date? = nil
@@ -35,6 +45,10 @@ struct CalendarView: View {
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
+    
+    private var selectedMonth: Date {
+        months[selectedMonthIndex]
+    }
     
     private var monthlyExpenses: [Expense] {
         // キャッシュを確認
@@ -80,52 +94,68 @@ struct CalendarView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // 月選択ヘッダー
-                MonthSelectorView(selectedMonth: $selectedMonth)
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-                
-                // 月間サマリー
-                MonthSummaryHeaderView(
-                    selectedMonth: selectedMonth,
-                    dailyTotals: filteredDailyTotals,
-                    isCalculating: isCalculating
-                )
-                .padding(.horizontal)
-                .padding(.bottom, 16)
-                
-                // カレンダーグリッド
-                if !isCalculating {
-                    CalendarGridView(
-                        selectedMonth: selectedMonth,
-                        dailyTotals: filteredDailyTotals,
-                        onDateTapped: { date in
-                            print("📅 日付タップ検知: \(date)")
-                            let dateItem = CalendarDateItem(date: date)
+                // TabViewで月ページを切り替え
+                TabView(selection: $selectedMonthIndex) {
+                    ForEach(months.indices, id: \.self) { index in
+                        let month = months[index]
+                        VStack(spacing: 0) {
+                            MonthSelectorViewPage(
+                                selectedMonth: month,
+                                monthString: monthFormatter.string(from: month)
+                            )
+                            .padding(.horizontal)
+                            .padding(.bottom, 8)
+                            
+                            MonthSummaryHeaderView(
+                                selectedMonth: month,
+                                dailyTotals: filteredDailyTotals,
+                                isCalculating: isCalculating
+                            )
+                            .padding(.horizontal)
+                            .padding(.bottom, 16)
+                            
+                            if !isCalculating {
+                                CalendarGridView(
+                                    selectedMonth: month,
+                                    dailyTotals: filteredDailyTotals,
+                                    onDateTapped: { date in
+                                        print("📅 日付タップ検知: \(date)")
+                                        let dateItem = CalendarDateItem(date: date)
 
-                            selectedDateItem = dateItem
-                            print("📅 selectedDateItem設定後: \(selectedDateItem?.date.description ?? "nil")")
+                                        selectedDateItem = dateItem
+                                        print("📅 selectedDateItem設定後: \(selectedDateItem?.date.description ?? "nil")")
 
-                            // ハプティックフィードバックを追加
-                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                            impactFeedback.impactOccurred()
+                                        // ハプティックフィードバックを追加
+                                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                                        impactFeedback.impactOccurred()
+                                    }
+                                )
+                                .padding(.horizontal)
+                            } else {
+                                VStack(spacing: 16) {
+                                    ProgressView()
+                                        .scaleEffect(1.2)
+                                    Text("データを計算中...")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .background(Color.clear)
+                            }
+                            Spacer()
                         }
-                    )
-                    .padding(.horizontal)
-                } else {
-                    // ローディング状態
-                    VStack(spacing: 16) {
-                        ProgressView()
-                            .scaleEffect(1.2)
-                        Text("データを計算中...")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        .tag(index)
+                        .onAppear {
+                            if index == selectedMonthIndex {
+                                // 月ページが表示されるたびに同期的に計算
+                                clearCache()
+                                calculateDailyTotalsSync()
+                            }
+                        }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.clear)
                 }
-                
-                Spacer()
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .animation(.easeInOut(duration: 0.3), value: selectedMonthIndex)
             }
             .navigationTitle("支出カレンダー")
             .navigationBarTitleDisplayMode(.inline)
@@ -156,25 +186,12 @@ struct CalendarView: View {
                 
                 print("📊 即座更新完了")
             }
-            // 🔥 修正: 月変更時も同期的に更新
-            .onChange(of: selectedMonth) { oldMonth, newMonth in
-                print("📅 選択月変更: \(monthFormatter.string(from: oldMonth)) -> \(monthFormatter.string(from: newMonth))")
+            // 🔥 修正: 月変更時も同期的に更新 → TabViewの選択インデックス変更時に同期更新するように修正
+            .onChange(of: selectedMonthIndex) { oldIndex, newIndex in
+                print("📅 選択月インデックス変更: \(monthFormatter.string(from: months[oldIndex])) -> \(monthFormatter.string(from: months[newIndex]))")
                 clearCache()
                 calculateDailyTotalsSync()
             }
-//            .toolbar {
-//                ToolbarItem(placement: .navigationBarTrailing) {
-//                    Button(action: {
-//                        Task {
-//                            await refreshData()
-//                        }
-//                    }) {
-//                        Image(systemName: "arrow.clockwise")
-//                            .foregroundColor(.blue)
-//                    }
-//                    .disabled(isCalculating)
-//                }
-//            }
             // シート表示
             .sheet(item: $selectedDateItem) { dateItem in
                 NavigationStack {
@@ -323,6 +340,37 @@ struct CalendarView: View {
     }
 }
 
+// MARK: - 月選択ビュー（TabView併用版）
+// 左右の矢印ボタンを削除し、表示のみとしたビュー
+struct MonthSelectorViewPage: View {
+    let selectedMonth: Date
+    let monthString: String
+    
+    var body: some View {
+        HStack {
+            Spacer()
+            Text(monthString)
+                .font(.title2)
+                .fontWeight(.semibold)
+            Spacer()
+        }
+        .padding(.vertical, 8)
+        .background {
+            if #available(iOS 26.0, *) {
+                Color.clear
+                    .glassEffect(.regular.tint(.blue.opacity(0.25)).interactive(), in: .rect(cornerRadius: 10))
+            } else {
+                Color.clear
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.gray.opacity(0.15), lineWidth: 1)
+                    )
+            }
+        }
+    }
+}
+
 // MARK: - カレンダーグリッドビューは変更なし
 struct CalendarGridView: View {
     let selectedMonth: Date
@@ -425,7 +473,6 @@ struct CalendarGridView: View {
         )
     }
 }
-
 // MARK: - その他のビューは変更なし（CalendarDayView, MonthSummaryHeaderView等）
 struct CalendarDayView: View {
     let date: Date
@@ -602,13 +649,6 @@ struct MonthSummaryHeaderView: View {
                         .fontWeight(.bold)
                         .foregroundColor(.primary)
                         .animation(.easeInOut(duration: 0.3), value: totalAmount)
-//                    
-//                    if !isCalculating && totalAmount > 0 {
-//                        Image(systemName: "calendar.badge.plus")
-//                            .font(.title2)
-//                            .foregroundColor(.blue)
-//                            .opacity(0.7)
-//                    }
                 }
             }
             
@@ -689,70 +729,4 @@ struct MonthSummaryHeaderView: View {
     }
 }
 
-// 月選択ビュー
-struct MonthSelectorView: View {
-    @Binding var selectedMonth: Date
-    
-    private var monthFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy年M月"
-        formatter.locale = Locale(identifier: "ja_JP")
-        return formatter
-    }
-    
-    var body: some View {
-        HStack {
-            Button(action: {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    selectedMonth = Calendar.current.date(byAdding: .month, value: -1, to: selectedMonth) ?? selectedMonth
-                }
-            }) {
-                Image(systemName: "chevron.left")
-                    .font(.title2)
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .clipShape(Circle())
-            }
-            .buttonStyle(PlainButtonStyle())
-            .contentShape(Circle())
-            
-            Spacer()
-            
-            Text(monthFormatter.string(from: selectedMonth))
-                .font(.title2)
-                .fontWeight(.semibold)
-                .animation(.easeInOut(duration: 0.2), value: selectedMonth)
-            
-            Spacer()
-            
-            Button(action: {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    selectedMonth = Calendar.current.date(byAdding: .month, value: 1, to: selectedMonth) ?? selectedMonth
-                }
-            }) {
-                Image(systemName: "chevron.right")
-                    .font(.title2)
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .clipShape(Circle())
-            }
-            .buttonStyle(PlainButtonStyle())
-            .contentShape(Circle())
-        }
-        .padding(.vertical, 8)
-        .background {
-            if #available(iOS 26.0, *) {
-                Color.clear
-                    .glassEffect(.regular.tint(.blue.opacity(0.25)).interactive(), in: .rect(cornerRadius: 10))
-            } else {
-                Color.clear
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.gray.opacity(0.15), lineWidth: 1)
-                    )
-            }
-        }
-    }
-}
 
