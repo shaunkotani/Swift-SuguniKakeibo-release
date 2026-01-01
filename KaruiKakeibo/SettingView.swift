@@ -121,7 +121,7 @@ struct SettingView: View {
                     HStack {
                         Text("バージョン")
                         Spacer()
-                        Text("3.0.0")
+                        Text("2.0.0")
                             .foregroundColor(.gray)
                     }
                     // サポートページリンク

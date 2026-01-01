@@ -82,17 +82,6 @@ struct CSVImportView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-
-                    Section {
-                        Button { importToDB() } label: {
-                            HStack {
-                                if isImporting { ProgressView().scaleEffect(0.9) }
-                                Text(isImporting ? "インポート中..." : "この内容でインポート")
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                        .disabled(isImporting || rows.allSatisfy { $0.error != nil })
-                    }
                 }
             }
             .navigationTitle("CSVインポート")
@@ -100,6 +89,19 @@ struct CSVImportView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("閉じる") { dismiss() }
+                }
+                if !rows.isEmpty {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            importToDB()
+                        } label: {
+                            HStack {
+                                if isImporting { ProgressView().scaleEffect(0.9) }
+                                Text(isImporting ? "インポート中..." : "インポート")
+                            }
+                        }
+                        .disabled(isImporting || rows.allSatisfy { $0.error != nil })
+                    }
                 }
             }
             .fileImporter(
@@ -110,7 +112,7 @@ struct CSVImportView: View {
                 handleFilePick(result)
             }
             .alert(resultTitle, isPresented: $showResultAlert) {
-                Button("OK") { }
+                Button("OK") { dismiss() }
             } message: {
                 Text(resultMessage)
             }
@@ -392,3 +394,4 @@ enum CSVParser {
         return rows
     }
 }
+
