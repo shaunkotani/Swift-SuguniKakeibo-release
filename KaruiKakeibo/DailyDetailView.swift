@@ -216,7 +216,7 @@ struct DailyDetailView: View {
                                 .multilineTextAlignment(.center)
                         }
                         
-                        Text("「入力」タブから支出を追加")
+                        Text("「入力」タブから支出を追加してください")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
