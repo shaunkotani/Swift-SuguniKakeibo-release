@@ -13,6 +13,16 @@ struct DatePagingSheet: View {
                 }
             }
             .tabViewStyle(.page)
+            .onAppear {
+                if selectedIndex < 0 || selectedIndex >= dates.count {
+                    selectedIndex = 0
+                }
+            }
+            .onChange(of: dates.count) { _, newCount in
+                if selectedIndex < 0 || selectedIndex >= newCount {
+                    selectedIndex = 0
+                }
+            }
         } else {
             VStack(spacing: 16) {
                 Image(systemName: "calendar.badge.exclamationmark")

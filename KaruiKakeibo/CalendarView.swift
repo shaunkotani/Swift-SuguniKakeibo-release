@@ -1,10 +1,3 @@
-//
-//  CalendarView.swift (自動更新対応版)
-//  Suguni-Kakeibo-2
-//
-//  Created by 大谷駿介 on 2025/07/29.
-//
-
 import SwiftUI
 
 struct CalendarDateItem: Identifiable {
@@ -17,7 +10,6 @@ struct CalendarView: View {
     @Binding var selectedTab: Int
     @Binding var shouldFocusAmount: Bool
     @State private var dailyTotals: [String: Double] = [:]
-    // ⚡︎ 変更: selectedMonth → selectedMonthIndex と months配列
     @State private var selectedMonthIndex: Int = 24
     @State private var showDataLoadingAlert: Bool = false
     private let months: [Date] = {
@@ -37,6 +29,7 @@ struct CalendarView: View {
     // パフォーマンス最適化用のキャッシュ
     @State private var cachedMonthlyExpenses: [Expense] = []
     @State private var cachedMonth: Date?
+
 
     // フォーマッターをキャッシュして再利用
     private let dateFormatter: DateFormatter = {
@@ -92,6 +85,7 @@ struct CalendarView: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .animation(.easeInOut(duration: 0.3), value: selectedMonthIndex)
+                .disabled(showingDetailSheet)
             }
             .navigationTitle("支出カレンダー")
             .navigationBarTitleDisplayMode(.inline)
@@ -231,21 +225,52 @@ struct CalendarView: View {
             }
         }
 
+//        await MainActor.run {
+//            self.dateListForSheet = dates
+//            print("[DEBUG] onDateTapped: dateListForSheet count = \(dateListForSheet.count)")
+//            // タップされた日付のインデックスをセット
+//            let normalizedTappedDate = calendar.startOfDay(for: date)
+//            if let tappedIndex = dates.firstIndex(where: { calendar.isDate($0, inSameDayAs: normalizedTappedDate) }) {
+//                self.selectedDateIndex = tappedIndex
+//            } else {
+//                // 万が一見つからなければ0にする
+//                self.selectedDateIndex = 0
+//            }
+//            let sortedKeys = Array(dailyTotals.keys).sorted()
+//            print("[DEBUG] onDateTapped: selectedDateIndex = \(selectedDateIndex)")
+//            print("[DEBUG] onDateTapped: dailyTotals.keys = \(sortedKeys)")
+//
+//            if !dateListForSheet.isEmpty {
+//                self.showingDetailSheet = true
+//            }
+//
+//            // ハプティックフィードバックを追加
+//            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+//            impactFeedback.impactOccurred()
+//        }
+        // ✅ 重要: first-launch 時に「シート表示が先に走って dates が空のまま描画される」ことがあるため、
+        // 1) dates/index を先に確定 → 2) 1tick(=Task.yield) 進める → 3) sheet を表示、の順にする
         await MainActor.run {
             self.dateListForSheet = dates
             print("[DEBUG] onDateTapped: dateListForSheet count = \(dateListForSheet.count)")
+
             // タップされた日付のインデックスをセット
             let normalizedTappedDate = calendar.startOfDay(for: date)
             if let tappedIndex = dates.firstIndex(where: { calendar.isDate($0, inSameDayAs: normalizedTappedDate) }) {
                 self.selectedDateIndex = tappedIndex
             } else {
-                // 万が一見つからなければ0にする
                 self.selectedDateIndex = 0
             }
+
             let sortedKeys = Array(dailyTotals.keys).sorted()
             print("[DEBUG] onDateTapped: selectedDateIndex = \(selectedDateIndex)")
             print("[DEBUG] onDateTapped: dailyTotals.keys = \(sortedKeys)")
+        }
 
+        // 1フレーム進めて state の反映を確実にする（sheet が空で開く現象の対策）
+        await Task.yield()
+
+        await MainActor.run {
             if !dateListForSheet.isEmpty {
                 self.showingDetailSheet = true
             }
