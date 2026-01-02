@@ -284,11 +284,11 @@ struct SettingView: View {
                 // コピーライト表示（最下部）
                 Section {
                     VStack(spacing: 8) {
-                        Text("© 2025 大谷駿介")
+                        Text("© 2026 大谷駿介")
                             .font(.caption)
                             .foregroundColor(.secondary)
                         
-                        Text("軽い家計簿 - Karui Kakeibo")
+                        Text("かるい家計簿!")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                             .italic()
