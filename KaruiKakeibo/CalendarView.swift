@@ -121,7 +121,7 @@ struct CalendarView: View {
             }
             // シート表示
             .sheet(isPresented: $showingDetailSheet) {
-                DatePagingSheet(dates: dateListForSheet, selectedIndex: $selectedDateIndex)
+                DatePagingSheet(dates: $dateListForSheet, selectedIndex: $selectedDateIndex)
                     .environmentObject(viewModel)
             }
             .alert("データ読み込み中です。しばらくしてから再度お試しください", isPresented: $showDataLoadingAlert) {

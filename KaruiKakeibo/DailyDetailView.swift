@@ -58,170 +58,168 @@ struct DailyDetailView: View {
         let weekday = calendar.component(.weekday, from: selectedDate)
         return weekday == 1 || weekday == 7 // 日曜日(1) または 土曜日(7)
     }
-
+    
     var body: some View {
-        NavigationStack {
-            ZStack {
-                VStack {
-                    // ヘッダー情報
-                    DailyDetailHeaderView(
-                        selectedDate: selectedDate,
-                        totalAmount: totalAmount,
-                        expenseCount: filteredExpenses.count,
-                        isWeekend: isWeekend,
-                        selectedCategoryName: selectedCategoryFilter == -1 ? nil : availableCategories.first(where: { $0.id == selectedCategoryFilter })?.name
+        ZStack {
+            VStack {
+                // ヘッダー情報
+                DailyDetailHeaderView(
+                    selectedDate: selectedDate,
+                    totalAmount: totalAmount,
+                    expenseCount: filteredExpenses.count,
+                    isWeekend: isWeekend,
+                    selectedCategoryName: selectedCategoryFilter == -1 ? nil : availableCategories.first(where: { $0.id == selectedCategoryFilter })?.name
+                )
+                .padding(.horizontal)
+                .padding(.bottom, 16)
+                
+                // カテゴリフィルター
+                if !availableCategories.isEmpty {
+                    CategoryFilterView(
+                        availableCategories: availableCategories,
+                        selectedCategoryFilter: $selectedCategoryFilter,
+                        viewModel: viewModel
                     )
                     .padding(.horizontal)
                     .padding(.bottom, 16)
-                    
-                    // カテゴリフィルター
-                    if !availableCategories.isEmpty {
-                        CategoryFilterView(
-                            availableCategories: availableCategories,
-                            selectedCategoryFilter: $selectedCategoryFilter,
-                            viewModel: viewModel
-                        )
-                        .padding(.horizontal)
-                        .padding(.bottom, 16)
-                    }
-                    
-                    // 支出履歴リスト
-                    List {
-                        ForEach(filteredExpenses) { expense in
-                            DailyDetailRowView(
-                                expense: expense,
-                                categories: viewModel.categories,
-                                showCategory: selectedCategoryFilter == -1,
-                                viewModel: viewModel
-                            )
-                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                        }
-                    }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
-                    .background(Color.clear)
                 }
                 
-                VStack {
-                    Spacer()
-                    HStack(spacing: 16) {
-                        if #available(iOS 26.0, *) {
-                            Button(action: {
-                                // この日に追加: 入力タブへ遷移し、日付を12:00で設定
-                                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                                impactFeedback.impactOccurred()
-                                
-                                // 12:00 に補正
-                                let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: selectedDate) ?? selectedDate
-                                
-                                // ViewModelへ指示
-                                viewModel.pendingInputDate = noon
-                                
-                                // 入力タブへ遷移を通知（タブ選択はContentViewのバインディング経由のため通知で指示）
-                                NotificationCenter.default.post(name: .switchTab, object: nil, userInfo: ["index": 2])
-                                
-                                // 画面を閉じる
-                                dismiss()
-                            }) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.system(size: 20))
-                                    Text("この日に追加")
-                                        .fontWeight(.semibold)
-                                }
-                                .frame(width: 200, height: 48)
-                            }
-                            .buttonStyle(.glassProminent)
+                // 支出履歴リスト
+                List {
+                    ForEach(filteredExpenses) { expense in
+                        DailyDetailRowView(
+                            expense: expense,
+                            categories: viewModel.categories,
+                            showCategory: selectedCategoryFilter == -1,
+                            viewModel: viewModel
+                        )
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
+            }
+            
+            VStack {
+                Spacer()
+                HStack(spacing: 16) {
+                    if #available(iOS 26.0, *) {
+                        Button(action: {
+                            // この日に追加: 入力タブへ遷移し、日付を12:00で設定
+                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                            impactFeedback.impactOccurred()
                             
-                            Button(action: {
-                                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                                impactFeedback.impactOccurred()
-                                dismiss()
-                            }) {
-                                Image(systemName: "xmark")
+                            // 12:00 に補正
+                            let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: selectedDate) ?? selectedDate
+                            
+                            // ViewModelへ指示
+                            viewModel.pendingInputDate = noon
+                            
+                            // 入力タブへ遷移を通知（タブ選択はContentViewのバインディング経由のため通知で指示）
+                            NotificationCenter.default.post(name: .switchTab, object: nil, userInfo: ["index": 2])
+                            
+                            // 画面を閉じる
+                            dismiss()
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "plus.circle.fill")
                                     .font(.system(size: 20))
-                                    .frame(width: 48, height: 48)
+                                Text("この日に追加")
+                                    .fontWeight(.semibold)
                             }
-                            .buttonStyle(.glass)
-                        } else {
-                            Button(action: {
-                                // この日に追加: 入力タブへ遷移し、日付を12:00で設定
-                                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                                impactFeedback.impactOccurred()
-                                
-                                // 12:00 に補正
-                                let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: selectedDate) ?? selectedDate
-                                
-                                // ViewModelへ指示
-                                viewModel.pendingInputDate = noon
-                                
-                                // 入力タブへ遷移を通知（タブ選択はContentViewのバインディング経由のため通知で指示）
-                                NotificationCenter.default.post(name: .switchTab, object: nil, userInfo: ["index": 2])
-                                
-                                // 画面を閉じる
-                                dismiss()
-                            }) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.system(size: 20))
-                                    Text("この日に追加")
-                                        .fontWeight(.semibold)
-                                }
+                            .frame(width: 200, height: 48)
+                        }
+                        .buttonStyle(.glassProminent)
+                        
+                        Button(action: {
+                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                            impactFeedback.impactOccurred()
+                            dismiss()
+                        }) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 20))
+                                .frame(width: 48, height: 48)
+                        }
+                        .buttonStyle(.glass)
+                    } else {
+                        Button(action: {
+                            // この日に追加: 入力タブへ遷移し、日付を12:00で設定
+                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                            impactFeedback.impactOccurred()
+                            
+                            // 12:00 に補正
+                            let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: selectedDate) ?? selectedDate
+                            
+                            // ViewModelへ指示
+                            viewModel.pendingInputDate = noon
+                            
+                            // 入力タブへ遷移を通知（タブ選択はContentViewのバインディング経由のため通知で指示）
+                            NotificationCenter.default.post(name: .switchTab, object: nil, userInfo: ["index": 2])
+                            
+                            // 画面を閉じる
+                            dismiss()
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 20))
+                                Text("この日に追加")
+                                    .fontWeight(.semibold)
+                            }
+                            .foregroundColor(.white)
+                            .background(Color.blue)
+                            .cornerRadius(24)
+                            .frame(width: 200, height: 48)
+                        }
+                        
+                        Button(action: {
+                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                            impactFeedback.impactOccurred()
+                            dismiss()
+                        }) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 20))
                                 .foregroundColor(.white)
-                                .background(Color.blue)
+                                .background(Color.orange)
                                 .cornerRadius(24)
-                                .frame(width: 200, height: 48)
-                            }
-                            
-                            Button(action: {
-                                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                                impactFeedback.impactOccurred()
-                                dismiss()
-                            }) {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(.white)
-                                    .background(Color.orange)
-                                    .cornerRadius(24)
-                                    .frame(width: 48, height: 48)
-                            }
+                                .frame(width: 48, height: 48)
                         }
                     }
-                    .padding(.bottom, 30)
-                    .frame(maxWidth: .infinity, alignment: .center)
                 }
+                .padding(.bottom, 30)
+                .frame(maxWidth: .infinity, alignment: .center)
             }
-            .navigationTitle("\(shortDateFormatter.string(from: selectedDate))の支出")
-            .navigationBarTitleDisplayMode(.inline)
-            .refreshable {
-                viewModel.fetchExpenses()
-            }
-            .overlay {
-                if filteredExpenses.isEmpty {
-                    VStack(spacing: 16) {
-                        Image(systemName: isWeekend ? "calendar" : "calendar.badge.exclamationmark")
-                            .font(.system(size: 60))
-                            .foregroundColor(.gray)
-                        
-                        if selectedCategoryFilter == -1 {
-                            Text("\(shortDateFormatter.string(from: selectedDate))の支出がありません")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                        } else {
-                            let categoryName = availableCategories.first(where: { $0.id == selectedCategoryFilter })?.name ?? "不明"
-                            Text("\(shortDateFormatter.string(from: selectedDate))の\(categoryName)の支出がありません")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                        }
-                        
-                        Text("「入力」タブから支出を追加してください")
-                            .font(.subheadline)
+        }
+        .navigationTitle("\(shortDateFormatter.string(from: selectedDate))の支出")
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable {
+            viewModel.fetchExpenses()
+        }
+        .overlay {
+            if filteredExpenses.isEmpty {
+                VStack(spacing: 16) {
+                    Image(systemName: isWeekend ? "calendar" : "calendar.badge.exclamationmark")
+                        .font(.system(size: 60))
+                        .foregroundColor(.gray)
+                    
+                    if selectedCategoryFilter == -1 {
+                        Text("\(shortDateFormatter.string(from: selectedDate))の支出がありません")
+                            .font(.headline)
                             .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    } else {
+                        let categoryName = availableCategories.first(where: { $0.id == selectedCategoryFilter })?.name ?? "不明"
+                        Text("\(shortDateFormatter.string(from: selectedDate))の\(categoryName)の支出がありません")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
                     }
-                    .padding()
+                    
+                    Text("「入力」タブから支出を追加してください")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                 }
+                .padding()
             }
         }
     }
@@ -414,7 +412,7 @@ struct CategoryFilterView: View {
         }
         return "tag.fill"  // フォールバック
     }
-
+    
     private func categoryColor(_ categoryName: String) -> Color {
         // カテゴリ名からIDを取得してから動的に取得
         if let category = viewModel.categories.first(where: { $0.name == categoryName }) {
@@ -524,7 +522,7 @@ struct DailyDetailRowView: View {
     private var categoryIcon: String {
         return viewModel.categoryIcon(for: expense.categoryId)
     }
-
+    
     private var categoryColor: Color {
         let colorString = viewModel.categoryColor(for: expense.categoryId)
         return colorFromString(colorString)
