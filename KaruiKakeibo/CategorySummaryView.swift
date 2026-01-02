@@ -492,7 +492,28 @@ struct CategorySummaryView: View {
                                 monthFormatter: monthFormatter
                             )
                             .frame(maxWidth: .infinity)
-                            .background(Color(UIColor.systemBackground).opacity(scrollOffset > 0 ? 0.95 : 1.0))
+                            .background {
+                                if #available(iOS 26.0, *) {
+                                    Color.clear
+                                        .glassEffect(
+                                            .regular.tint(.blue.opacity(0.2)).interactive(),
+                                            in: .rect(cornerRadius: 24)
+                                        )
+                                } else {
+                                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                        .fill(.ultraThinMaterial)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                                .fill(
+                                                    LinearGradient(
+                                                        colors: [Color.white.opacity(0.10), Color.white.opacity(0.04)],
+                                                        startPoint: .topLeading,
+                                                        endPoint: .bottomTrailing
+                                                    )
+                                                )
+                                        )
+                                }
+                            }
                             .clipped()
                             , alignment: .top
                         )

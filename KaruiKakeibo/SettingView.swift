@@ -119,10 +119,9 @@ struct SettingView: View {
                 
                 Section(header: Text("アプリ情報")) {
                     HStack {
-                        Text("バージョン")
-                        Spacer()
-                        Text("2.0.0")
+                        Text("バージョン \(AppInfo.version) (\(AppInfo.build))")
                             .foregroundColor(.gray)
+                        Spacer()
                     }
                     // サポートページリンク
                     Button(action: {
@@ -765,3 +764,4 @@ struct SettingView_Previews: PreviewProvider {
             .environmentObject(ExpenseViewModel())
     }
 }
+

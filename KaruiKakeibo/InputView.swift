@@ -30,29 +30,6 @@ struct InputView: View {
     init(shouldFocusAmount: Binding<Bool> = .constant(false)) {
         self._shouldFocusAmount = shouldFocusAmount
     }
-    
-    // MARK: - 分割: キーボードツールバーのビュー
-    @ViewBuilder
-    private func keyboardToolbarView() -> some View {
-        if amount.isEmpty {
-            Spacer()
-            Button("閉じる") {
-                hideKeyboard()
-            }
-            .foregroundColor(.blue)
-            .fontWeight(.semibold)
-        } else {
-            Button("閉じる") {
-                hideKeyboard()
-            }
-            .foregroundColor(.blue)
-            .fontWeight(.semibold)
-
-            Spacer()
-
-            SaveOnKeyboardButton(isButtonEnabled: isButtonEnabled, isProcessing: isProcessing, action: saveExpense)
-        }
-    }
 
     // MARK: - 分割: 成功メッセージのオーバーレイ
     @ViewBuilder
@@ -80,7 +57,7 @@ struct InputView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("金額 (下部入力タブを再タップでフォーカス)")) {
+                Section(header: Text("金額")) {
                     HStack {
                         Text("¥")
                             .foregroundColor(.secondary)
@@ -231,10 +208,6 @@ struct InputView: View {
                     .foregroundColor(.orange)
                     .disabled(isProcessing)
                 }
-                
-                ToolbarItemGroup(placement: .keyboard) {
-                    keyboardToolbarView()
-                }
             }
             .onSubmit {
                 if isButtonEnabled && !isProcessing {
@@ -264,8 +237,9 @@ struct InputView: View {
             .overlay(
                 successOverlay
             )
-            // 背景タップでキーボードを閉じる 削除しました
-            
+            .onTapGesture {
+                UIApplication.shared.closeKeyboard()
+            }
             .onAppear {
                 setupInitialCategory()
                 if let presetDate = viewModel.pendingInputDate {
@@ -683,8 +657,7 @@ struct FloatingActionButton: View {
     
     var buttonText: String {
         if isProcessing { return "保存中..." }
-        if isButtonEnabled { return "支出を保存" }
-        return "入力を完了してください"
+        return "支出を保存"
     }
     
     var body: some View {
@@ -704,7 +677,7 @@ struct FloatingActionButton: View {
                         Text(buttonText)
                             .fontWeight(.semibold)
                     } else {
-                        Image(systemName: isButtonEnabled ? "plus.circle.fill" : "exclamationmark.circle")
+                        Image(systemName: "plus.circle.fill")
                             .font(.title3)
                         Text(buttonText)
                             .fontWeight(.semibold)
@@ -755,17 +728,23 @@ struct SaveOnKeyboardButton: View {
     let isButtonEnabled: Bool
     let isProcessing: Bool
     let action: () -> Void
+    
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark.circle.fill")
+            HStack(spacing: 8) {
+                // ... ProgressViewまたはアイコン
                 Text(isProcessing ? "保存中..." : "入力を保存")
                     .fontWeight(.semibold)
+                    .foregroundColor(.white)
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 56)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, minHeight: 36)
+            .background(
+                Capsule().fill(isButtonEnabled ? Color.blue : Color.gray)
+            )
+            .opacity(isProcessing ? 0.7 : 1.0)
         }
-        .modifier(AvailabilityModifier(isButtonEnabled: isButtonEnabled, isProcessing: isProcessing))
         .disabled(!isButtonEnabled || isProcessing)
     }
 }
@@ -937,6 +916,12 @@ struct CategoryButtonView: View {
         .buttonStyle(PlainButtonStyle())
         .scaleEffect(isSelected ? 1.05 : 1.0)
         .animation(.easeInOut(duration: 0.2), value: isSelected)
+    }
+}
+
+extension UIApplication {
+    func closeKeyboard() {
+        sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
 
