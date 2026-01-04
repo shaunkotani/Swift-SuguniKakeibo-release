@@ -304,17 +304,6 @@ struct CategoryDetailRowView: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // 日付アイコン
-            VStack(spacing: 2) {
-                Text("\(Calendar.current.component(.day, from: expense.date))")
-                    .font(.headline)
-                    .fontWeight(.bold)
-                    .foregroundColor(.white)
-                Text(getDayOfWeek())
-                    .font(.caption2)
-                    .foregroundColor(.white)
-            }
-            .frame(width: 40, height: 40)
             if #available(iOS 26.0, *) {
                 VStack(spacing: 2) {
                     Text("\(Calendar.current.component(.day, from: expense.date))")
