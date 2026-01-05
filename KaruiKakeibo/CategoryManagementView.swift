@@ -366,6 +366,19 @@ struct CategoryManagementRowView: View {
                 Text(category.isVisible ? "表示中" : "非表示")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                
+                HStack(spacing: 6) {
+                    Text(category.type == .expense ? "支出" : "収入")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(category.type == .expense ? Color.red.opacity(0.15) : Color.green.opacity(0.15))
+                        )
+                        .foregroundColor(category.type == .expense ? .red : .green)
+                }
             }
             
             Spacer()
@@ -653,3 +666,4 @@ struct CategoryManagementView_Previews: PreviewProvider {
             .environmentObject(ExpenseViewModel())
     }
 }
+
