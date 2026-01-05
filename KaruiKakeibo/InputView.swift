@@ -13,6 +13,7 @@ struct InputView: View {
     @State private var amount: String = ""
     @State private var date = Date()
     @State private var note: String = ""
+    @State private var transactionType: TransactionType = .expense
     @State private var selectedCategoryId: Int = 1
     @State private var showAlert = false
     @State private var alertMessage = ""
@@ -39,7 +40,7 @@ struct InputView: View {
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
-                    Text("支出を保存しました")
+                    Text(transactionType == .expense ? "支出を保存しました" : "収入を保存しました")
                         .foregroundColor(.white)
                 }
                 .padding()
@@ -57,6 +58,15 @@ struct InputView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section(header: Text("種類")) {
+                    Picker("種類", selection: $transactionType) {
+                        Text("支出")
+                            .tag(TransactionType.expense)
+                        Text("収入")
+                            .tag(TransactionType.income)
+                    }
+                    .pickerStyle(.segmented)
+                }
                 Section(header: Text("金額")) {
                     HStack {
                         Text("¥")
@@ -199,7 +209,7 @@ struct InputView: View {
                 }
             }
             .scrollDismissesKeyboard(.immediately)
-            .navigationTitle("支出入力")
+            .navigationTitle(transactionType == .expense ? "支出入力" : "収入入力")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("クリア") {
@@ -585,6 +595,7 @@ struct InputView: View {
         let expense = Expense(
             id: 0,
             amount: parsedAmount,
+            type: transactionType,
             date: date,
             note: note.trimmingCharacters(in: .whitespacesAndNewlines),
             categoryId: selectedCategoryId,

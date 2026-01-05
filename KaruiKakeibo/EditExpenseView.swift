@@ -13,6 +13,7 @@ struct EditExpenseView: View {
     @State private var amount: String = ""
     @State private var date = Date()
     @State private var note: String = ""
+    @State private var transactionType: TransactionType = .expense
     @State private var selectedCategoryId: Int = 1
     @State private var showAlert = false
     @State private var alertMessage = ""
@@ -29,6 +30,15 @@ struct EditExpenseView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section(header: Text("種類")) {
+                    Picker("種類", selection: $transactionType) {
+                        Text("支出")
+                            .tag(TransactionType.expense)
+                        Text("収入")
+                            .tag(TransactionType.income)
+                    }
+                    .pickerStyle(.segmented)
+                }
                 Section(header: Text("金額")) {
                     HStack {
                         Text("¥")
@@ -117,7 +127,7 @@ struct EditExpenseView: View {
                     }
                 }
             }
-            .navigationTitle("支出編集")
+            .navigationTitle(transactionType == .expense ? "支出編集" : "収入編集")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
@@ -162,7 +172,7 @@ struct EditExpenseView: View {
                         hideKeyboard()
                     }
             )
-            .alert(alertType == .error ? "入力エラー" : "支出を削除", isPresented: $showAlert) {
+            .alert(alertType == .error ? "入力エラー" : (transactionType == .expense ? "支出を削除" : "収入を削除"), isPresented: $showAlert) {
                 if alertType == .error {
                     Button("OK") { }
                 } else {
@@ -172,7 +182,7 @@ struct EditExpenseView: View {
                     Button("キャンセル", role: .cancel) { }
                 }
             } message: {
-                Text(alertType == .error ? alertMessage : "この支出を削除しますか？この操作は取り消せません。")
+                Text(alertType == .error ? alertMessage : (transactionType == .expense ?  "この支出を削除しますか？この操作は取り消せません。" : "この収入を削除しますか？この操作は取り消せません。"))
             }
             .overlay {
                 if isUpdating {
@@ -254,6 +264,7 @@ struct EditExpenseView: View {
             }
             date = expense.date
             note = expense.note
+            transactionType = expense.type
             selectedCategoryId = expense.categoryId
             print("データ読み込み完了: ID=\(expenseId), CategoryID=\(selectedCategoryId)")
             
@@ -328,6 +339,7 @@ struct EditExpenseView: View {
         let updatedExpense = Expense(
             id: expenseId,
             amount: parsedAmount,
+            type: transactionType,
             date: date,
             note: note.trimmingCharacters(in: .whitespacesAndNewlines),
             categoryId: selectedCategoryId,
@@ -385,6 +397,9 @@ struct EditCategoryPickerView: View {
                 .background(
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color.orange.opacity(0.1))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
                         .stroke(Color.orange.opacity(0.3), lineWidth: 1)
                 )
             }
@@ -495,6 +510,9 @@ struct EditCategoryButtonView: View {
             .background(
                 RoundedRectangle(cornerRadius: 12)
                     .fill(isSelected ? categoryColor.opacity(0.1) : Color.gray.opacity(0.05))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
                     .stroke(
                         isSelected ? categoryColor :
                         (isVisible ? Color.gray.opacity(0.3) : Color.orange.opacity(0.4)),
@@ -614,3 +632,4 @@ struct EditExpenseView_Previews: PreviewProvider {
         }
     }
 }
+
