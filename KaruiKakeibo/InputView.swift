@@ -146,7 +146,8 @@ struct InputView: View {
                 Section(header: Text("カテゴリ")) {
                     // カテゴリピッカーを独立したセクションに
                     CategoryPickerView(
-                        selectedCategoryId: $selectedCategoryId
+                        selectedCategoryId: $selectedCategoryId,
+                        transactionType: transactionType
                     )
                     .environmentObject(viewModel) // ViewModelを渡す
                     .listRowBackground(Color.clear)
@@ -317,6 +318,12 @@ struct InputView: View {
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
                     showFloatingButton = true
+                }
+            }
+            .onChange(of: transactionType) { oldType, newType in
+                let visible = viewModel.getVisibleCategoriesByType(newType)
+                if !visible.contains(where: { $0.id == selectedCategoryId }) {
+                    selectedCategoryId = visible.first?.id ?? selectedCategoryId
                 }
             }
         }
@@ -514,7 +521,7 @@ struct InputView: View {
     
     private func setupInitialCategory() {
         // 可視カテゴリの最初のものを選択
-        let visibleCategories = viewModel.getVisibleCategories()
+        let visibleCategories = viewModel.getVisibleCategoriesByType(transactionType)
         if selectedCategoryId == 1 && !visibleCategories.isEmpty {
             selectedCategoryId = visibleCategories.first?.id ?? 1
         }
@@ -644,7 +651,7 @@ struct InputView: View {
         date = Date()
         
         // 可視カテゴリの最初のものを再選択
-        let visibleCategories = viewModel.getVisibleCategories()
+        let visibleCategories = viewModel.getVisibleCategoriesByType(transactionType)
         if let first = visibleCategories.first {
             selectedCategoryId = first.id
         }
@@ -776,10 +783,11 @@ struct CategoryInfo: Identifiable, Equatable {
 struct CategoryPickerView: View {
     @Binding var selectedCategoryId: Int
     @EnvironmentObject var viewModel: ExpenseViewModel
+    let transactionType: TransactionType
     
     // 表示するカテゴリを可視カテゴリに限定（Equatable対応）
     private var displayCategories: [CategoryInfo] {
-        return viewModel.getVisibleCategories().map { CategoryInfo(id: $0.id, name: $0.name) }
+        return viewModel.getVisibleCategoriesByType(transactionType).map { CategoryInfo(id: $0.id, name: $0.name) }
     }
     
     var body: some View {

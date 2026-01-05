@@ -85,45 +85,41 @@ class ExpenseViewModel: ObservableObject {
                 isDefault: false,
                 isVisible: false,
                 isActive: false,
-                sortOrder: 999
+                sortOrder: 999,
+                createdAt: "",
+                type: .expense
             )
         }
     }
 
-    // MARK: - データ取得
-    func fetchExpenses() {
-        guard !isOperating else { return }
-        
-        Task {
-            await performDataOperation {
-                let fetchedExpenses = ExpenseDatabaseManager.shared.fetchExpenses()
-                await MainActor.run {
-                    self.expenses = fetchedExpenses
-                    self.errorMessage = nil
-                    self.buildDeletedCategoriesCache()
-                }
-            }
-        }
-    }
-
-    func fetchCategories() {
-        guard !isOperating else { return }
-        
-        Task {
-            await performDataOperation {
-                let fetchedFullCategories = ExpenseDatabaseManager.shared.fetchFullCategories()
-                let fetchedCategories = fetchedFullCategories.map { (id: $0.id, name: $0.name) }
-                await MainActor.run {
-                    self.fullCategories = fetchedFullCategories
-                    self.categories = fetchedCategories
-                    self.errorMessage = nil
-                    self.buildDeletedCategoriesCache()
-                }
-            }
-        }
+    // MARK: - カテゴリ管理機能
+    
+    // タイプ別カテゴリ取得（全アクティブ）
+    func categoriesByType(_ type: TransactionType) -> [(id: Int, name: String)] {
+        return fullCategories
+            .filter { $0.isActive && $0.type == type }
+            .sorted { $0.sortOrder < $1.sortOrder }
+            .map { (id: $0.id, name: $0.name) }
     }
     
-    // MARK: - カテゴリ管理機能
+    // タイプ別カテゴリ（表示フラグのみ）
+    func getVisibleCategoriesByType(_ type: TransactionType) -> [(id: Int, name: String)] {
+        return fullCategories
+            .filter { $0.isActive && $0.isVisible && $0.type == type }
+            .sorted { $0.sortOrder < $1.sortOrder }
+            .map { (id: $0.id, name: $0.name) }
+    }
+    
+    // カテゴリのタイプを取得
+    func categoryType(for id: Int) -> TransactionType {
+        if let cat = fullCategories.first(where: { $0.id == id }) {
+            return cat.type
+        }
+        if let deleted = deletedCategoriesCache[id] as? FullCategory {
+            return deleted.type
+        }
+        return .expense
+    }
     
     func getVisibleCategories() -> [(id: Int, name: String)] {
         return fullCategories.filter { $0.isVisible }.map { (id: $0.id, name: $0.name) }
@@ -430,6 +426,16 @@ class ExpenseViewModel: ObservableObject {
             return deletedCategory.name
         }
         
+        return "不明なカテゴリ"
+    }
+    
+    func categoryNameTyped(for id: Int) -> String {
+        if let cat = fullCategories.first(where: { $0.id == id }) {
+            return cat.name
+        }
+        if let deletedCategory = deletedCategoriesCache[id] {
+            return deletedCategory.name
+        }
         return "不明なカテゴリ"
     }
     

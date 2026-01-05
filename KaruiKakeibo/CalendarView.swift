@@ -1,5 +1,7 @@
 import SwiftUI
 
+private func format0(_ value: Double) -> String { String(format: "%.0f", value) }
+
 struct CalendarDateItem: Identifiable {
     let id = UUID()
     let date: Date
@@ -10,17 +12,14 @@ struct CalendarView: View {
     @Binding var selectedTab: Int
     @Binding var shouldFocusAmount: Bool
     @State private var dailyTotals: [String: Double] = [:]
+    @State private var dailyExpenseTotals: [String: Double] = [:]
+    @State private var dailyIncomeTotals: [String: Double] = [:]
     @State private var selectedMonthIndex: Int = 24
     @State private var showDataLoadingAlert: Bool = false
-    private let months: [Date] = {
-        let calendar = Calendar.current
-        let today = Date()
-        // -24ヶ月から+24ヶ月まで計算し配列化
-        return (-24...24).compactMap { offset in
-            calendar.date(byAdding: .month, value: offset, to: today)
-        }
-    }()
-
+    @State private var useCumulativeMode: Bool = false
+    @State private var cumulativeNetTotals: [String: Double] = [:]
+    @State private var cumulativeMaxPositive: Double = 0
+    @State private var cumulativeMaxNegative: Double = 0
     @State private var isCalculating = false
     @State private var dateListForSheet: [Date] = []
     @State private var selectedDateIndex: Int = 0
@@ -73,10 +72,21 @@ struct CalendarView: View {
         formatter.locale = Locale(identifier: "ja_JP")
         return formatter
     }
+    
+    private let months: [Date] = {
+        let calendar = Calendar.current
+        let today = Date()
+        // -24ヶ月から+24ヶ月まで計算し配列化
+        return (-24...24).compactMap { offset in
+            calendar.date(byAdding: .month, value: offset, to: today)
+        }
+    }()
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // Removed HStack with Toggle for useCumulativeMode here
+
                 // TabViewで月ページを切り替え
                 TabView(selection: $selectedMonthIndex) {
                     ForEach(months.indices, id: \.self) { index in
@@ -119,6 +129,28 @@ struct CalendarView: View {
                 clearCache()
                 calculateDailyTotalsSync()
             }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button(action: {
+                            useCumulativeMode = false
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }) {
+                            Label("日毎±", systemImage: "plusminus.circle")
+                        }
+                        Button(action: {
+                            useCumulativeMode = true
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }) {
+                            Label("月累積", systemImage: "chart.line.uptrend.xyaxis")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("表示モード")
+                    .accessibilityHint(useCumulativeMode ? "現在は月累積。タップして変更" : "現在は日毎±。タップして変更")
+                }
+            }
             // シート表示
             .sheet(isPresented: $showingDetailSheet) {
                 DatePagingSheet(dates: $dateListForSheet, selectedIndex: $selectedDateIndex)
@@ -142,16 +174,34 @@ struct CalendarView: View {
             MonthSummaryHeaderView(
                 selectedMonth: month,
                 dailyTotals: dailyTotals,
+                dailyExpenseTotals: dailyExpenseTotals,
+                dailyIncomeTotals: dailyIncomeTotals,
                 isCalculating: isCalculating
             )
             .padding(.horizontal)
             .padding(.bottom, 16)
-
+            /*
+            ZStack {
+                // empty spacer to keep layout
+            }
+            .frame(height: 0)
+            .overlay(alignment: .topTrailing) {
+                CalendarModeToggleButton(isOn: $useCumulativeMode)
+                    .padding(.trailing, 20)
+                    .padding(.top, 4)
+            }
+            */
             Group {
                 if !isCalculating {
                     CalendarGridView(
                         selectedMonth: month,
                         dailyTotals: dailyTotals,
+                        dailyExpenseTotals: dailyExpenseTotals,
+                        dailyIncomeTotals: dailyIncomeTotals,
+                        cumulativeNetTotals: cumulativeNetTotals,
+                        cumulativeMaxPositive: cumulativeMaxPositive,
+                        cumulativeMaxNegative: cumulativeMaxNegative,
+                        useCumulativeMode: useCumulativeMode,
                         onDateTapped: { date in
                             Task {
                                 await handleDateTapped(date: date, month: month)
@@ -225,29 +275,6 @@ struct CalendarView: View {
             }
         }
 
-//        await MainActor.run {
-//            self.dateListForSheet = dates
-//            print("[DEBUG] onDateTapped: dateListForSheet count = \(dateListForSheet.count)")
-//            // タップされた日付のインデックスをセット
-//            let normalizedTappedDate = calendar.startOfDay(for: date)
-//            if let tappedIndex = dates.firstIndex(where: { calendar.isDate($0, inSameDayAs: normalizedTappedDate) }) {
-//                self.selectedDateIndex = tappedIndex
-//            } else {
-//                // 万が一見つからなければ0にする
-//                self.selectedDateIndex = 0
-//            }
-//            let sortedKeys = Array(dailyTotals.keys).sorted()
-//            print("[DEBUG] onDateTapped: selectedDateIndex = \(selectedDateIndex)")
-//            print("[DEBUG] onDateTapped: dailyTotals.keys = \(sortedKeys)")
-//
-//            if !dateListForSheet.isEmpty {
-//                self.showingDetailSheet = true
-//            }
-//
-//            // ハプティックフィードバックを追加
-//            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-//            impactFeedback.impactOccurred()
-//        }
         // ✅ 重要: first-launch 時に「シート表示が先に走って dates が空のまま描画される」ことがあるため、
         // 1) dates/index を先に確定 → 2) 1tick(=Task.yield) 進める → 3) sheet を表示、の順にする
         await MainActor.run {
@@ -302,9 +329,38 @@ struct CalendarView: View {
         }
 
         // 各日の合計を計算
+        dailyExpenseTotals = groupedExpenses.mapValues { expenses in
+            expenses.filter { $0.type == .expense }.reduce(0) { $0 + $1.amount }
+        }
+        dailyIncomeTotals = groupedExpenses.mapValues { expenses in
+            expenses.filter { $0.type == .income }.reduce(0) { $0 + $1.amount }
+        }
+
+        // 互換のため残しておく（使わなくてもOK）
         dailyTotals = groupedExpenses.mapValues { expenses in
             expenses.reduce(0) { $0 + $1.amount }
         }
+        
+        // 累積用の計算
+        var cum: [String: Double] = [:]
+        var running: Double = 0
+        // その月の日付を昇順で列挙
+        let startOfMonth = Calendar.current.dateInterval(of: .month, for: selectedMonth)?.start ?? selectedMonth
+        let daysRange = (0..<31).compactMap { Calendar.current.date(byAdding: .day, value: $0, to: startOfMonth) }
+        for day in daysRange {
+            if !Calendar.current.isDate(day, equalTo: selectedMonth, toGranularity: .month) { break }
+            let key = dateFormatter.string(from: day)
+            let income = dailyIncomeTotals[key] ?? 0
+            let expense = dailyExpenseTotals[key] ?? 0
+            running += (income - expense)
+            cum[key] = running
+        }
+        self.cumulativeNetTotals = cum
+        // 最大値計算
+        let positives = cum.values.filter { $0 > 0 }
+        let negatives = cum.values.filter { $0 < 0 }.map { abs($0) }
+        self.cumulativeMaxPositive = positives.max() ?? 0
+        self.cumulativeMaxNegative = negatives.max() ?? 0
 
         print("📊 同期的日別集計計算完了: \(dailyTotals.count)日分")
         print("[DEBUG] calculateDailyTotalsSync: dailyTotals = \(dailyTotals)")
@@ -421,6 +477,12 @@ struct MonthSelectorViewPage: View {
 struct CalendarGridView: View {
     let selectedMonth: Date
     let dailyTotals: [String: Double]
+    let dailyExpenseTotals: [String: Double]
+    let dailyIncomeTotals: [String: Double]
+    let cumulativeNetTotals: [String: Double]
+    let cumulativeMaxPositive: Double
+    let cumulativeMaxNegative: Double
+    let useCumulativeMode: Bool
     let onDateTapped: (Date) -> Void
 
     private let calendar = Calendar.current
@@ -462,13 +524,17 @@ struct CalendarGridView: View {
 
     // 最大支出日を計算
     private var maxExpenseDate: String? {
-        guard !dailyTotals.isEmpty else { return nil }
-        return dailyTotals.max { $0.value < $1.value }?.key
+        guard !dailyExpenseTotals.isEmpty else { return nil }
+        return dailyExpenseTotals.max { $0.value < $1.value }?.key
     }
     
     // 最大支出額
     private var maxExpenseAmount: Double {
-        dailyTotals.values.max() ?? 0
+        dailyExpenseTotals.values.max() ?? 0
+    }
+    
+    private var maxIncomeAmount: Double {
+        dailyIncomeTotals.values.max() ?? 0
     }
 
     var body: some View {
@@ -489,12 +555,20 @@ struct CalendarGridView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 4) {
                 ForEach(0..<monthDates.count, id: \.self) { index in
                     if let date = monthDates[index] {
+                        let key = dateFormatter.string(from: date)
+                        let cumulativeNet = cumulativeNetTotals[key] ?? 0
                         CalendarDayView(
                             date: date,
-                            total: dailyTotals[dateFormatter.string(from: date)] ?? 0,
-                            maxTotal: maxExpenseAmount,
+                            expenseTotal: dailyExpenseTotals[key] ?? 0,
+                            incomeTotal: dailyIncomeTotals[key] ?? 0,
+                            maxExpenseTotal: maxExpenseAmount,
+                            maxIncomeTotal: maxIncomeAmount,
+                            cumulativeNet: cumulativeNet,
+                            cumulativeMaxPositive: cumulativeMaxPositive,
+                            cumulativeMaxNegative: cumulativeMaxNegative,
+                            useCumulativeMode: useCumulativeMode,
                             isToday: calendar.isDateInToday(date),
-                            isMaxExpenseDay: maxExpenseDate == dateFormatter.string(from: date),
+                            isMaxExpenseDay: maxExpenseDate == key,
                             onTapped: {
                                 print("📅 CalendarDayView タップ: \(date)")
                                 onDateTapped(date)
@@ -528,9 +602,14 @@ struct CalendarGridView: View {
 // MARK: - その他のビューは変更なし（CalendarDayView, MonthSummaryHeaderView等）
 struct CalendarDayView: View {
     let date: Date
-    let total: Double
-    /// 当月の最大支出額（データバー100%基準）
-    let maxTotal: Double
+    let expenseTotal: Double
+    let incomeTotal: Double
+    let maxExpenseTotal: Double
+    let maxIncomeTotal: Double
+    let cumulativeNet: Double
+    let cumulativeMaxPositive: Double
+    let cumulativeMaxNegative: Double
+    let useCumulativeMode: Bool
     let isToday: Bool
     let isMaxExpenseDay: Bool
     let onTapped: () -> Void
@@ -541,45 +620,38 @@ struct CalendarDayView: View {
         return formatter.string(from: date)
     }
 
-    private var isWeekend: Bool {
-        let calendar = Calendar.current
-        let weekday = calendar.component(.weekday, from: date)
-        return weekday == 1 || weekday == 7 // 日曜日(1) または 土曜日(7)
+    private var netTotal: Double {
+        incomeTotal - expenseTotal
     }
 
-    private var hasExpense: Bool {
-        total > 0
+    private var netText: String {
+        if netTotal == 0 { return "¥0" }
+        let prefix = netTotal > 0 ? "+" : "-"
+        return "\(prefix)¥\(format0(abs(netTotal)))"
     }
 
-    /// 0.0〜1.0（当月最大支出に対する割合）
-    private var barRatio: CGFloat {
-        guard maxTotal > 0, total > 0 else { return 0 }
-        let r = total / maxTotal
-        return CGFloat(min(max(r, 0), 1))
+    private var expenseRatio: CGFloat {
+        guard maxExpenseTotal > 0, expenseTotal > 0 else { return 0 }
+        return CGFloat(min(expenseTotal / maxExpenseTotal, 1))
     }
 
-    private var textColor: Color {
-        if isToday {
-            return .white
-        }
-        if isWeekend {
-            return Calendar.current.component(.weekday, from: date) == 1 ? .red : .blue
-        }
-        return .primary
+    private var incomeRatio: CGFloat {
+        guard maxIncomeTotal > 0, incomeTotal > 0 else { return 0 }
+        return CGFloat(min(incomeTotal / maxIncomeTotal, 1))
+    }
+    
+    private var cumulativePositiveRatio: CGFloat {
+        guard cumulativeMaxPositive > 0, cumulativeNet > 0 else { return 0 }
+        return CGFloat(min(cumulativeNet / cumulativeMaxPositive, 1))
+    }
+    private var cumulativeNegativeRatio: CGFloat {
+        guard cumulativeMaxNegative > 0, cumulativeNet < 0 else { return 0 }
+        return CGFloat(min(abs(cumulativeNet) / cumulativeMaxNegative, 1))
     }
 
     private var baseBackground: Color {
         if isToday { return .orange }
-        if isMaxExpenseDay { return Color.red.opacity(0.15) }
         return Color(.systemGray6)
-    }
-
-    private var barColor: Color {
-        // 今日 or 最大支出日は白系、それ以外は青系（将来の収入対応で拡張予定）
-        if isToday || isMaxExpenseDay {
-            return Color.white.opacity(0.28)
-        }
-        return Color.blue.opacity(0.28)
     }
 
     var body: some View {
@@ -588,29 +660,112 @@ struct CalendarDayView: View {
                 Text(dayNumber)
                     .font(.headline)
                     .fontWeight(isToday ? .bold : .medium)
-                    .foregroundColor(textColor)
+                    .foregroundColor(isToday ? .white : .primary)
 
-                Text("¥\(total, specifier: "%.0f")")
+                Text(netText)
                     .font(.caption2)
                     .fontWeight(.medium)
-                    .foregroundColor(textColor)
+                    .foregroundColor(isToday ? .white : .secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity, minHeight: 60)
             .background {
-                CalendarDataBarBackground(
-                    base: baseBackground,
-                    bar: barColor,
-                    ratio: barRatio,
-                    showBar: hasExpense,
-                    isToday: isToday,
-                    isMaxExpenseDay: isMaxExpenseDay
-                )
+                if useCumulativeMode {
+                    CalendarCumulativeBarBackground(
+                        base: baseBackground,
+                        positiveRatio: cumulativePositiveRatio,
+                        negativeRatio: cumulativeNegativeRatio,
+                        isToday: isToday
+                    )
+                } else {
+                    CalendarPlusMinusBarBackground(
+                        base: baseBackground,
+                        expenseRatio: expenseRatio,
+                        incomeRatio: incomeRatio,
+                        isToday: isToday
+                    )
+                }
             }
         }
         .buttonStyle(CalendarCellButtonStyle())
-        .disabled(false)
+    }
+}
+
+/// 0基準線を中央に置き、収入は上、支出は下に伸びる縦データバー
+private struct CalendarPlusMinusBarBackground: View {
+    let base: Color
+    let expenseRatio: CGFloat
+    let incomeRatio: CGFloat
+    let isToday: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            let half = geo.size.height / 2
+            let upH = half * incomeRatio
+            let downH = half * expenseRatio
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(base)
+
+                // 0基準線
+                Rectangle()
+                    .fill(Color.gray.opacity(0.25))
+                    .frame(height: 1)
+                    .position(x: geo.size.width / 2, y: half)
+
+                // 収入（上方向）
+                if upH > 0 {
+                    Rectangle()
+                        .fill(Color.green.opacity(0.28))
+                        .frame(width: geo.size.width, height: upH)
+                        .position(x: geo.size.width / 2, y: half - upH / 2)
+                        .animation(.easeInOut(duration: 0.2), value: incomeRatio)
+                }
+
+                // 支出（下方向）
+                if downH > 0 {
+                    Rectangle()
+                        .fill(Color.red.opacity(0.24))
+                        .frame(width: geo.size.width, height: downH)
+                        .position(x: geo.size.width / 2, y: half + downH / 2)
+                        .animation(.easeInOut(duration: 0.2), value: expenseRatio)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isToday ? Color.orange.opacity(0.85) : Color.clear, lineWidth: isToday ? 2 : 1)
+            )
+        }
+    }
+}
+
+/// 累積用バー背景：正の累積は上方向、負の累積は下方向に伸びるバー
+private struct CalendarCumulativeBarBackground: View {
+    let base: Color
+    let positiveRatio: CGFloat
+    let negativeRatio: CGFloat
+    let isToday: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            let half = geo.size.height / 2
+            let upH = half * positiveRatio
+            let downH = half * negativeRatio
+            ZStack {
+                RoundedRectangle(cornerRadius: 8).fill(base)
+                Rectangle().fill(Color.gray.opacity(0.25)).frame(height: 1).position(x: geo.size.width/2, y: half)
+                if upH > 0 { Rectangle().fill(Color.green.opacity(0.28)).frame(width: geo.size.width, height: upH).position(x: geo.size.width/2, y: half - upH/2).animation(.easeInOut(duration: 0.2), value: positiveRatio) }
+                if downH > 0 { Rectangle().fill(Color.red.opacity(0.24)).frame(width: geo.size.width, height: downH).position(x: geo.size.width/2, y: half + downH/2).animation(.easeInOut(duration: 0.2), value: negativeRatio) }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isToday ? Color.orange.opacity(0.85) : Color.clear, lineWidth: isToday ? 2 : 1)
+            )
+        }
     }
 }
 
@@ -685,6 +840,8 @@ struct CalendarCellButtonStyle: ButtonStyle {
 struct MonthSummaryHeaderView: View {
     let selectedMonth: Date
     let dailyTotals: [String: Double]
+    let dailyExpenseTotals: [String: Double]
+    let dailyIncomeTotals: [String: Double]
     let isCalculating: Bool
 
     private var monthFormatter: DateFormatter {
@@ -694,25 +851,26 @@ struct MonthSummaryHeaderView: View {
         return formatter
     }
 
-    private var totalAmount: Double {
-        dailyTotals.values.reduce(0, +)
+    private var incomeTotal: Double {
+        dailyIncomeTotals.values.reduce(0, +)
     }
 
-    private var expenseDays: Int {
-        dailyTotals.count
+    private var expenseTotal: Double {
+        dailyExpenseTotals.values.reduce(0, +)
+    }
+
+    private var totalAmount: Double {
+        incomeTotal - expenseTotal
+    }
+
+    private var daysCount: Int {
+        // Count unique days from keys in expense and income totals
+        let keys = Set(dailyExpenseTotals.keys).union(Set(dailyIncomeTotals.keys))
+        return keys.count
     }
 
     private var averagePerDay: Double {
-        expenseDays > 0 ? totalAmount / Double(expenseDays) : 0
-    }
-
-    // 🎯 最大支出情報を表示（シンプル版）
-    private var maxExpenseInfo: (date: String, amount: Double)? {
-        guard !dailyTotals.isEmpty else { return nil }
-        if let maxEntry = dailyTotals.max(by: { $0.value < $1.value }) {
-            return (date: maxEntry.key, amount: maxEntry.value)
-        }
-        return nil
+        daysCount > 0 ? totalAmount / Double(daysCount) : 0
     }
 
     var body: some View {
@@ -724,7 +882,7 @@ struct MonthSummaryHeaderView: View {
                     .foregroundColor(.secondary)
 
                 HStack {
-                    Text("¥\(totalAmount, specifier: "%.0f")")
+                    Text("¥\(format0(totalAmount))")
                         .font(.largeTitle)
                         .fontWeight(.bold)
                         .foregroundColor(.primary)
@@ -733,14 +891,14 @@ struct MonthSummaryHeaderView: View {
             }
 
             // 詳細統計
-            if !isCalculating && expenseDays > 0 {
+            if !isCalculating && daysCount > 0 {
                 HStack(spacing: 0) {
-                    // 支出日数
+                    // 収入合計
                     VStack(spacing: 2) {
-                        Text("支出日数")
+                        Text("収入合計")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        Text("\(expenseDays)日")
+                        Text("¥\(format0(incomeTotal))")
                             .font(.subheadline)
                             .fontWeight(.semibold)
                             .foregroundColor(.blue)
@@ -757,7 +915,7 @@ struct MonthSummaryHeaderView: View {
                         Text("1日平均")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        Text("¥\(averagePerDay, specifier: "%.0f")")
+                        Text("¥\(format0(averagePerDay))")
                             .font(.subheadline)
                             .fontWeight(.semibold)
                             .foregroundColor(.blue)
@@ -769,12 +927,12 @@ struct MonthSummaryHeaderView: View {
                         .fill(Color.gray.opacity(0.3))
                         .frame(width: 1, height: 30)
 
-                    // 最大支出日
+                    // 支出合計
                     VStack(spacing: 2) {
-                        Text("最大支出")
+                        Text("支出合計")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        Text("¥\(dailyTotals.values.max() ?? 0, specifier: "%.0f")")
+                        Text("¥\(format0(expenseTotal))")
                             .font(.subheadline)
                             .fontWeight(.semibold)
                             .foregroundColor(.red)
@@ -788,7 +946,6 @@ struct MonthSummaryHeaderView: View {
                         .fill(Color.blue.opacity(0.05))
                         .stroke(Color.blue.opacity(0.2), lineWidth: 1)
                 )
-                .animation(.easeInOut(duration: 0.3), value: expenseDays)
             }
         }
         .padding()

@@ -117,7 +117,6 @@ struct CategoryDetailView: View {
                 }
             }
             .refreshable {
-                viewModel.fetchExpenses()
             }
             .overlay {
                 if filteredExpenses.isEmpty {
