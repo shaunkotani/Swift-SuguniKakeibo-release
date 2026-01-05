@@ -143,7 +143,30 @@ struct InputView: View {
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 }
                 
-                Section(header: Text("カテゴリ")) {
+                Section(header:
+                    HStack {
+                        Text("カテゴリ")
+                        Spacer()
+                        NavigationLink {
+                            CategoryManagementView()
+                                .environmentObject(viewModel)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "pencil")
+                                Text("編集")
+                            }
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule().fill(Color.blue.opacity(0.1))
+                            )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .accessibilityLabel("カテゴリを編集")
+                    }
+                ) {
                     // カテゴリピッカーを独立したセクションに
                     CategoryPickerView(
                         selectedCategoryId: $selectedCategoryId,
