@@ -58,12 +58,9 @@ struct ContentView: View {
             ),
 
             analysisView: AnyView(
-                AnalysisPlaceholderView(
-                    selectedTab: $selectedTab,
-                    shouldFocusAmount: $shouldFocusAmount
-                )
-                .environmentObject(viewModel)
-                .withOverflowMenu()
+                AnalysisView()
+                    .environmentObject(viewModel)
+                    .withOverflowMenu()
             ),
 
             inputView: AnyView(
@@ -366,3 +363,4 @@ private struct CalculatorPlaceholderView: View {
         }
     }
 }
+
