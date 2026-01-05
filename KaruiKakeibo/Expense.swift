@@ -1,15 +1,14 @@
-//
-//  Expense.swift
-//  Suguni-Kakeibo-2
-//
-//  Created by 大谷駿介 on 2025/07/29.
-//
-
 import Foundation
+
+enum TransactionType: Int, Codable, CaseIterable, Hashable {
+    case expense = 0
+    case income = 1
+}
 
 struct Expense: Identifiable, Hashable {
     var id: Int
     var amount: Double
+    var type: TransactionType = .expense    // デフォルトは支出
     var date: Date
     var note: String
     var categoryId: Int

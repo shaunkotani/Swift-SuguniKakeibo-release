@@ -14,109 +14,108 @@ extension Notification.Name {
 // MARK: - タブ識別子
 enum AppTab: Int, CaseIterable {
     case calendar = 0
-    case category = 1
+    case analysis = 1
     case input = 2
-    case expenses = 3
-    case settings = 4
-    
+    case memo = 3
+    case calculator = 4
+
     var title: String {
         switch self {
-        case .calendar: return "日別集計"
-        case .category: return "カテゴリ集計"
+        case .calendar: return "カレンダー"
+        case .analysis: return "分析"
         case .input: return "入力"
-        case .expenses: return "履歴と編集"
-        case .settings: return "設定"
+        case .memo: return "メモ"
+        case .calculator: return "電卓"
         }
     }
-    
+
     var systemImage: String {
         switch self {
         case .calendar: return "calendar"
-        case .category: return "chart.pie"
+        case .analysis: return "chart.bar"
         case .input: return "plus.circle"
-        case .expenses: return "list.bullet"
-        case .settings: return "gear"
+        case .memo: return "note.text"
+        case .calculator: return "x.squareroot"
         }
     }
 }
 
 struct ContentView: View {
     @StateObject private var viewModel = ExpenseViewModel()
-    @State private var shouldFocusAmount: Bool = false
+
     @State private var selectedTab: Int = AppTab.input.rawValue
-    
+    @State private var shouldFocusAmount: Bool = false
+
     var body: some View {
         TabBarControllerRepresentable(
-            calendarView: AnyView(CalendarView(
-                selectedTab: $selectedTab,
-                shouldFocusAmount: $shouldFocusAmount
-            ).environmentObject(viewModel)),
-            
-            categoryView: AnyView(CategorySummaryView(
-                selectedTab: $selectedTab,
-                shouldFocusAmount: $shouldFocusAmount
-            ).environmentObject(viewModel)),
-            
-            inputView: AnyView(InputView(
-                shouldFocusAmount: $shouldFocusAmount
-            ).environmentObject(viewModel)),
-            
-            expensesView: AnyView(ExpensesView()
-                .environmentObject(viewModel)),
-            
-            settingsView: AnyView(SettingView()
-                .environmentObject(viewModel))
+            calendarView: AnyView(
+                CalendarView(
+                    selectedTab: $selectedTab,
+                    shouldFocusAmount: $shouldFocusAmount
+                )
+                .environmentObject(viewModel)
+                .withOverflowMenu()
+            ),
+
+            analysisView: AnyView(
+                AnalysisPlaceholderView(
+                    selectedTab: $selectedTab,
+                    shouldFocusAmount: $shouldFocusAmount
+                )
+                .environmentObject(viewModel)
+                .withOverflowMenu()
+            ),
+
+            inputView: AnyView(
+                InputView(
+                    shouldFocusAmount: $shouldFocusAmount
+                )
+                .environmentObject(viewModel)
+                .withOverflowMenu()
+            ),
+
+            memoView: AnyView(
+                MemoPlaceholderView()
+            ),
+
+            calculatorView: AnyView(
+                CalculatorPlaceholderView()
+            )
         )
-//        .ignoresSafeArea(.keyboard, edges: .bottom)
         .edgesIgnoringSafeArea(.all)
-    }
-    
-    // 他のビューから呼び出せる関数（既存機能を維持）
-    func navigateToInputWithFocus() {
-        // 入力タブに切り替え
-        selectedTab = AppTab.input.rawValue
-        
-        // 少し遅延してからフォーカス
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            shouldFocusAmount = true
-        }
-        
-        print("📱 支出追加ボタンから入力画面へ遷移")
     }
 }
 
-// MARK: - UIKit ラッパー（UITabBarControllerDelegate で再選択検知）
 struct TabBarControllerRepresentable: UIViewControllerRepresentable {
     let calendarView: AnyView
-    let categoryView: AnyView
+    let analysisView: AnyView
     let inputView: AnyView
-    let expensesView: AnyView
-    let settingsView: AnyView
-    
+    let memoView: AnyView
+    let calculatorView: AnyView
+
     func makeUIViewController(context: Context) -> UITabBarController {
         let tabBarController = UITabBarController()
         tabBarController.delegate = context.coordinator
-        
+
         // TabBarの外観をLiquid Glass対応（iOS 26+）/ ブラー（iOS 25以下）に設定
         let appearance = UITabBarAppearance()
         appearance.configureWithTransparentBackground()
         appearance.backgroundColor = .clear
-        appearance.shadowColor = .clear
-        
+
         // すべてのOSバージョンで安定したブラー背景を使用
         appearance.backgroundEffect = UIBlurEffect(style: .systemChromeMaterial)
-        
+
         // 半透明を有効化
         tabBarController.tabBar.isTranslucent = true
-        
+
         // 標準/スクロールエッジの両方に適用
         tabBarController.tabBar.standardAppearance = appearance
         tabBarController.tabBar.scrollEdgeAppearance = appearance
         tabBarController.tabBar.backgroundColor = .clear
-        
+
         // iOS 26 以降のみ、ガラスエフェクトを下地に敷く
         // Removed per instructions
-        
+
         // 各タブをUIHostingControllerでラップ
         let calendarVC = UIHostingController(rootView: calendarView)
         calendarVC.tabBarItem = UITabBarItem(
@@ -124,42 +123,42 @@ struct TabBarControllerRepresentable: UIViewControllerRepresentable {
             image: UIImage(systemName: AppTab.calendar.systemImage),
             tag: AppTab.calendar.rawValue
         )
-        
-        let categoryVC = UIHostingController(rootView: categoryView)
-        categoryVC.tabBarItem = UITabBarItem(
-            title: AppTab.category.title,
-            image: UIImage(systemName: AppTab.category.systemImage),
-            tag: AppTab.category.rawValue
+
+        let analysisVC = UIHostingController(rootView: analysisView)
+        analysisVC.tabBarItem = UITabBarItem(
+            title: AppTab.analysis.title,
+            image: UIImage(systemName: AppTab.analysis.systemImage),
+            tag: AppTab.analysis.rawValue
         )
-        
+
         let inputVC = UIHostingController(rootView: inputView)
         inputVC.tabBarItem = UITabBarItem(
             title: AppTab.input.title,
             image: UIImage(systemName: AppTab.input.systemImage),
             tag: AppTab.input.rawValue
         )
-        
-        let expensesVC = UIHostingController(rootView: expensesView)
-        expensesVC.tabBarItem = UITabBarItem(
-            title: AppTab.expenses.title,
-            image: UIImage(systemName: AppTab.expenses.systemImage),
-            tag: AppTab.expenses.rawValue
+
+        let memoVC = UIHostingController(rootView: memoView)
+        memoVC.tabBarItem = UITabBarItem(
+            title: AppTab.memo.title,
+            image: UIImage(systemName: AppTab.memo.systemImage),
+            tag: AppTab.memo.rawValue
         )
-        
-        let settingsVC = UIHostingController(rootView: settingsView)
-        settingsVC.tabBarItem = UITabBarItem(
-            title: AppTab.settings.title,
-            image: UIImage(systemName: AppTab.settings.systemImage),
-            tag: AppTab.settings.rawValue
+
+        let calculatorVC = UIHostingController(rootView: calculatorView)
+        calculatorVC.tabBarItem = UITabBarItem(
+            title: AppTab.calculator.title,
+            image: UIImage(systemName: AppTab.calculator.systemImage),
+            tag: AppTab.calculator.rawValue
         )
-        
+
         tabBarController.viewControllers = [
-            calendarVC, categoryVC, inputVC, expensesVC, settingsVC
+            calendarVC, analysisVC, inputVC, memoVC, calculatorVC
         ]
-        
+
         // デフォルトで入力タブを選択
         tabBarController.selectedIndex = AppTab.input.rawValue
-        
+
         // 🔔 タブ切替通知を監視してプログラム的にタブを切り替え
         NotificationCenter.default.addObserver(forName: .switchTab, object: nil, queue: .main) { notification in
             if let index = notification.userInfo?["index"] as? Int,
@@ -171,41 +170,38 @@ struct TabBarControllerRepresentable: UIViewControllerRepresentable {
                 impactFeedback.impactOccurred()
             }
         }
-        
-        print("✅ UITabBarController 設定完了")
+
+        print("✅ UITabBarController 생성 완료")
         return tabBarController
     }
-    
-    func updateUIViewController(_ uiViewController: UITabBarController, context: Context) {
-        // 必要に応じて動的更新
-    }
-    
+
+    func updateUIViewController(_ uiViewController: UITabBarController, context: Context) {}
+
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
-    
-    // MARK: Coordinator = UITabBarControllerDelegate 実装
-    final class Coordinator: NSObject, UITabBarControllerDelegate {
+
+    class Coordinator: NSObject, UITabBarControllerDelegate {
         func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
             print("🔄 shouldSelect 呼び出し")
-            
+
             // インデックスを取得
             guard let viewControllers = tabBarController.viewControllers,
                   let newIndex = viewControllers.firstIndex(where: { $0 === viewController }) else {
                 return true
             }
-            
+
             // 現在選択中のVCと、これから選択しようとしているVCが同一なら「再選択」
             if tabBarController.selectedViewController === viewController {
                 print("🔥 タブ再選択を検出")
                 print("📱 再選択されたタブインデックス: \(newIndex)")
-                
-                // 🆕 タブ別の再選択時ハプティックフィードバック
-                //                generateTabReselectionHaptic(for: newIndex)
-                if newIndex == 2 || newIndex == 3 {
+
+                // 入力タブだけ強め（必要なら後で調整）
+                if newIndex == AppTab.input.rawValue {
                     let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
                     impactFeedback.impactOccurred()
                 }
+
                 // 通知を送信
                 NotificationCenter.default.post(
                     name: .tabReselected,
@@ -214,103 +210,159 @@ struct TabBarControllerRepresentable: UIViewControllerRepresentable {
                 )
             } else {
                 print("🔄 通常のタブ選択")
-                
                 let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
                 impactFeedback.impactOccurred()
-                
-                // 🆕 タブ別の選択時ハプティックフィードバック
-//                generateTabSelectionHaptic(for: newIndex)
-                
             }
-            
+
             return true // 選択自体は許可
         }
-        
-        func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
-            if let index = tabBarController.viewControllers?.firstIndex(where: { $0 === viewController }) {
-                print("🏷️ タブ選択完了: index \(index)")
-                // 選択完了時の処理（必要に応じて）
-//                generateTabSelectionCompleteHaptic(for: index)
-            }
-        }
-        // 🆕 タブ再選択時のハプティックフィードバック
+
+        // （未使用だが将来の調整用に残置）
         private func generateTabReselectionHaptic(for index: Int) {
             switch index {
-            case 0: // カレンダータブ
-                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                impactFeedback.impactOccurred()
-                print("📅 カレンダータブ再選択 - medium haptic")
-                
-            case 1: // カテゴリ集計タブ
-                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                impactFeedback.impactOccurred()
-                print("📊 カテゴリ集計タブ再選択 - medium haptic")
-                
-            case 2: // 入力タブ
-                let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
-                impactFeedback.impactOccurred()
-                print("💰 入力タブ再選択 - heavy haptic")
-                
-            case 3: // 履歴タブ
-                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                impactFeedback.impactOccurred()
-                print("📋 履歴タブ再選択 - medium haptic")
-                
-            case 4: // 設定タブ
-                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                impactFeedback.impactOccurred()
-                print("⚙️ 設定タブ再選択 - light haptic")
-                
+            case 0:
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            case 1:
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            case 2:
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
             default:
-                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                impactFeedback.impactOccurred()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
         }
-        // 🆕 通常のタブ選択時のハプティックフィードバック
+
         private func generateTabSelectionHaptic(for index: Int) {
             switch index {
-            case 0: // カレンダータブ
-                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                impactFeedback.impactOccurred()
-                print("📅 カレンダータブ選択 - light haptic")
-                
-            case 1: // カテゴリ集計タブ
-                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                impactFeedback.impactOccurred()
-                print("📊 カテゴリ集計タブ選択 - light haptic")
-                
-            case 2: // 入力タブ
-                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                impactFeedback.impactOccurred()
-                print("💰 入力タブ選択 - medium haptic")
-                
-            case 3: // 履歴タブ
-                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                impactFeedback.impactOccurred()
-                print("📋 履歴タブ選択 - light haptic")
-                
-            case 4: // 設定タブ
-                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                impactFeedback.impactOccurred()
-                print("⚙️ 設定タブ選択 - light haptic")
-                
+            case 0:
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            case 1:
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            case 2:
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             default:
-                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                impactFeedback.impactOccurred()
-            }
-        }
-        // 🆕 選択完了時のハプティックフィードバック（オプション）
-        private func generateTabSelectionCompleteHaptic(for index: Int) {
-            // より細かい制御が必要な場合のみ使用
-            // 例：特定のタブでのみ追加フィードバック
-            if index == 2 { // 入力タブの場合のみ
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    let selectionFeedback = UISelectionFeedbackGenerator()
-                    selectionFeedback.selectionChanged()
-                    print("💰 入力タブ選択完了 - selection feedback")
-                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
         }
     }
 }
 
+// MARK: - 右上「…」メニュー（CSV / iOS設定）
+private enum AppMenuActions {
+    static func exportCSV() {
+        // TODO: CSVエクスポート画面に接続（いったん仮実装）
+        print("🧾 CSVエクスポート（仮）")
+    }
+
+    static func importCSV() {
+        // TODO: CSVインポート画面に接続（いったん仮実装）
+        print("📥 CSVインポート（仮）")
+    }
+
+    static func openIOSSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+    }
+}
+
+private struct OverflowMenu: View {
+    var body: some View {
+        Menu {
+            Button("CSVエクスポート") { AppMenuActions.exportCSV() }
+            Button("CSVインポート") { AppMenuActions.importCSV() }
+            Divider()
+            Button("iOS設定を開く") { AppMenuActions.openIOSSettings() }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .accessibilityLabel("メニュー")
+    }
+}
+
+private struct OverflowMenuToolbar: ViewModifier {
+    func body(content: Content) -> some View {
+        content.toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                OverflowMenu()
+            }
+        }
+    }
+}
+
+private extension View {
+    /// NavigationStack内で使う前提（右上に「…」メニューを追加）
+    func withOverflowMenu() -> some View {
+        self.modifier(OverflowMenuToolbar())
+    }
+}
+
+// MARK: - 分析タブ（暫定：既存Viewを壊さず接続するためのプレースホルダ）
+private struct AnalysisPlaceholderView: View {
+    @Binding var selectedTab: Int
+    @Binding var shouldFocusAmount: Bool
+    @EnvironmentObject var viewModel: ExpenseViewModel
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("分析（準備中）") {
+                    Text("今後ここにトップビュー / 月間推移 / 年間推移などを追加します。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("既存機能へのリンク") {
+                    NavigationLink("カテゴリ別集計") {
+                        CategorySummaryView(
+                            selectedTab: $selectedTab,
+                            shouldFocusAmount: $shouldFocusAmount
+                        )
+                        .environmentObject(viewModel)
+                    }
+
+                    NavigationLink("支出の履歴") {
+                        ExpensesView()
+                            .environmentObject(viewModel)
+                    }
+                }
+            }
+            .navigationTitle("分析")
+        }
+    }
+}
+
+// MARK: - メモ / 電卓（暫定プレースホルダ）
+private struct MemoPlaceholderView: View {
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                Image(systemName: "note.text")
+                    .font(.system(size: 40))
+                Text("メモ（準備中）")
+                    .font(.headline)
+                Text("お買い物メモや注意点などをここに追加予定です。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .padding()
+            .navigationTitle("メモ")
+        }
+    }
+}
+
+private struct CalculatorPlaceholderView: View {
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                Image(systemName: "calculator")
+                    .font(.system(size: 40))
+                Text("電卓（準備中）")
+                    .font(.headline)
+                Text("家計計算に特化した電卓をここに追加予定です。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .padding()
+            .navigationTitle("電卓")
+        }
+    }
+}

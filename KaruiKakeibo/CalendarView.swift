@@ -460,10 +460,15 @@ struct CalendarGridView: View {
         return dates
     }
 
-    // 🎯 最大支出日を計算するプロパティを追加
+    // 最大支出日を計算
     private var maxExpenseDate: String? {
         guard !dailyTotals.isEmpty else { return nil }
         return dailyTotals.max { $0.value < $1.value }?.key
+    }
+    
+    // 最大支出額
+    private var maxExpenseAmount: Double {
+        dailyTotals.values.max() ?? 0
     }
 
     var body: some View {
@@ -487,6 +492,7 @@ struct CalendarGridView: View {
                         CalendarDayView(
                             date: date,
                             total: dailyTotals[dateFormatter.string(from: date)] ?? 0,
+                            maxTotal: maxExpenseAmount,
                             isToday: calendar.isDateInToday(date),
                             isMaxExpenseDay: maxExpenseDate == dateFormatter.string(from: date),
                             onTapped: {
@@ -523,6 +529,8 @@ struct CalendarGridView: View {
 struct CalendarDayView: View {
     let date: Date
     let total: Double
+    /// 当月の最大支出額（データバー100%基準）
+    let maxTotal: Double
     let isToday: Bool
     let isMaxExpenseDay: Bool
     let onTapped: () -> Void
@@ -540,55 +548,48 @@ struct CalendarDayView: View {
     }
 
     private var hasExpense: Bool {
-        return total > 0
+        total > 0
     }
 
-    private var intensityLevel: Int {
-        // 支出額に応じて強度レベルを決定（0-3）
-        if total == 0 { return 0 }
-        if total < 1000 { return 1 }
-        if total < 5000 { return 2 }
-        return 3
-    }
-
-    private var cellColor: Color {
-        if !hasExpense { return Color.clear }
-
-        if isMaxExpenseDay {
-            // 最大支出日は特別なカラーグラデーション
-            return Color.red.opacity(0.5)
-        }
-
-        switch intensityLevel {
-        case 1: return Color.blue.opacity(0.3)
-        case 2: return Color.blue.opacity(0.6)
-        case 3: return Color.blue.opacity(0.9)
-        default: return Color.clear
-        }
+    /// 0.0〜1.0（当月最大支出に対する割合）
+    private var barRatio: CGFloat {
+        guard maxTotal > 0, total > 0 else { return 0 }
+        let r = total / maxTotal
+        return CGFloat(min(max(r, 0), 1))
     }
 
     private var textColor: Color {
         if isToday {
             return .white
-        } else if isMaxExpenseDay {
-            return .white
-        } else if isWeekend {
-            return intensityLevel >= 2 ? .white : (Calendar.current.component(.weekday, from: date) == 1 ? .red : .blue)
-        } else {
-            return intensityLevel >= 2 ? .white : .primary
         }
+        if isWeekend {
+            return Calendar.current.component(.weekday, from: date) == 1 ? .red : .blue
+        }
+        return .primary
+    }
+
+    private var baseBackground: Color {
+        if isToday { return .orange }
+        if isMaxExpenseDay { return Color.red.opacity(0.15) }
+        return Color(.systemGray6)
+    }
+
+    private var barColor: Color {
+        // 今日 or 最大支出日は白系、それ以外は青系（将来の収入対応で拡張予定）
+        if isToday || isMaxExpenseDay {
+            return Color.white.opacity(0.28)
+        }
+        return Color.blue.opacity(0.28)
     }
 
     var body: some View {
         Button(action: onTapped) {
             VStack(spacing: 2) {
-                // 日付
                 Text(dayNumber)
                     .font(.headline)
                     .fontWeight(isToday ? .bold : .medium)
                     .foregroundColor(textColor)
 
-                // 支出金額
                 Text("¥\(total, specifier: "%.0f")")
                     .font(.caption2)
                     .fontWeight(.medium)
@@ -597,30 +598,63 @@ struct CalendarDayView: View {
                     .minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity, minHeight: 60)
-            .modifier(
-                GroupModifier {
-                    if #available(iOS 26.0, *) {
-                        $0.glassEffect(.regular.tint(isToday ? .orange : (isMaxExpenseDay ? .red : (hasExpense ? .blue : .clear))).interactive(), in: .rect(cornerRadius: 8))
-                    } else {
-                        $0.background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(isToday ? Color.orange : cellColor)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(
-                                            isToday ? Color.orange.opacity(0.8) :
-                                                isMaxExpenseDay ? Color.red.opacity(0.8) :
-                                            hasExpense ? Color.blue.opacity(0.4) : Color.clear,
-                                            lineWidth: isToday || isMaxExpenseDay ? 2 : 1
-                                        )
-                                )
-                        )
-                    }
-                }
-            )
+            .background {
+                CalendarDataBarBackground(
+                    base: baseBackground,
+                    bar: barColor,
+                    ratio: barRatio,
+                    showBar: hasExpense,
+                    isToday: isToday,
+                    isMaxExpenseDay: isMaxExpenseDay
+                )
+            }
         }
         .buttonStyle(CalendarCellButtonStyle())
         .disabled(false)
+    }
+}
+
+/// Excelのデータバー風：セル内を割合で塗りつぶす背景
+private struct CalendarDataBarBackground: View {
+    let base: Color
+    let bar: Color
+    let ratio: CGFloat
+    let showBar: Bool
+    let isToday: Bool
+    let isMaxExpenseDay: Bool
+
+    private var strokeColor: Color {
+        if isToday { return Color.orange.opacity(0.85) }
+        if isMaxExpenseDay { return Color.red.opacity(0.85) }
+        if showBar { return Color.blue.opacity(0.35) }
+        return Color.clear
+    }
+
+    private var strokeWidth: CGFloat {
+        (isToday || isMaxExpenseDay) ? 2 : 1
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let height = max(0, min(geo.size.height * ratio, geo.size.height))
+
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(base)
+
+                if showBar, height > 0 {
+                    Rectangle()
+                        .fill(bar)
+                        .frame(height: height)
+                        .animation(.easeInOut(duration: 0.2), value: ratio)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(strokeColor, lineWidth: strokeWidth)
+            )
+        }
     }
 }
 
