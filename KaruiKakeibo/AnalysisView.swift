@@ -29,6 +29,7 @@ struct AnalysisView: View {
     @State private var windowLength: Int = 12
     @State private var zoomScale: CGFloat = 1.0
     @State private var hasAutoScrolledToEnd: Bool = false
+    @State private var selectedMonth: Date? = nil
 
     private var seriesData: [MonthlySeriesPoint] {
         buildSeries(startMonth: windowStartMonth, monthsCount: windowLength)
@@ -76,79 +77,237 @@ private extension AnalysisView {
                 }
                 .frame(maxWidth: .infinity, minHeight: 220)
             } else {
-                // 横スクロール + ピンチズーム対応
-                ScrollViewReader { proxy in
-                    ScrollView(.horizontal, showsIndicators: true) {
-                        // データ点数に応じて横幅を確保（1ヶ月あたりの幅はズームで可変）
-                        let monthsCount = max(1, windowLength)
-                        let baseMonthWidth: CGFloat = 60
-                        let trailingPadding: CGFloat = 32 // 末尾が見切れないための余白
-                        let contentWidth = max(UIScreen.main.bounds.width - 32, CGFloat(monthsCount) * baseMonthWidth * zoomScale + trailingPadding)
+                // 横スクロール + ピンチズーム対応（Y軸と凡例は左に固定）
+                let yDomain = yDomainForSeries(seriesData)
+                let selectedValues = selectedMonth.map(valuesForMonth)
+                let labelAtBottom: Bool = {
+                    guard let sv = selectedValues else { return false }
+                    let anchorY = max(sv.expense, sv.income, sv.total)
+                    let range = yDomain.upperBound - yDomain.lowerBound
+                    guard range > 0 else { return false }
+                    // 上端付近に来たら下側に出す（はみ出し防止）
+                    return anchorY >= (yDomain.upperBound - range * 0.18)
+                }()
+                let labelAtTop: Bool = {
+                    guard let sv = selectedValues else { return false }
+                    let anchorY = max(sv.expense, sv.income, sv.total)
+                    let range = yDomain.upperBound - yDomain.lowerBound
+                    guard range > 0 else { return false }
+                    // 下端付近に来たら上側へ寄せる（はみ出し防止）
+                    return anchorY <= (yDomain.lowerBound + range * 0.18)
+                }()
+                let labelYOffset: CGFloat = labelAtBottom ? 12 : (labelAtTop ? -12 : 0)
+                // --- Inserted code for latest month detection and label side ---
+                let currentMonthStart = startOfMonth(Date())
+                let lastVisibleMonth: Date? = seriesData
+                    .map { startOfMonth($0.month) }
+                    .filter { $0 <= currentMonthStart }
+                    .max()
+                let labelOnLeft: Bool = {
+                    guard let sm = selectedMonth, let lvm = lastVisibleMonth else { return false }
+                    return startOfMonth(sm) == lvm
+                }()
 
-                        VStack(alignment: .leading) {
-                            Chart(seriesData) { point in
-                                LineMark(
-                                    x: .value("月", point.month, unit: .month),
-                                    y: .value("金額", point.value),
-                                    series: .value("系列", point.series)
-                                )
-                                .interpolationMethod(.linear)
-                                .foregroundStyle(by: .value("系列", point.series))
+                VStack(alignment: .leading, spacing: 10) {
+                    // 凡例は上に出して、軸とプロットの上端を揃える
+                    fixedLegend
 
+                    HStack(alignment: .top, spacing: 8) {
+                        // 左: 固定のY軸
+                        Chart {
+                            // 目盛り計算のためのダミーマーク（表示しない）
+                            RuleMark(y: .value("min", yDomain.lowerBound)).opacity(0)
+                            RuleMark(y: .value("max", yDomain.upperBound)).opacity(0)
+
+                            // 右側チャートの選択ラベル分の余白を一致させる（見えない注釈）
+                            if let sv = selectedValues {
+                                let anchorY = max(sv.expense, sv.income, sv.total)
                                 PointMark(
-                                    x: .value("月", point.month, unit: .month),
-                                    y: .value("金額", point.value)
+                                    x: .value("x", 0),
+                                    y: .value("金額", anchorY)
                                 )
-                                .symbolSize(24)
-                                .foregroundStyle(by: .value("系列", point.series))
-                                .opacity({ () -> Double in
-                                    if let lastRealMonth = seriesData.map({ $0.month }).max() {
-                                        return point.month > lastRealMonth ? 0.0 : 1.0
+                                .opacity(0)
+                                .annotation(position: .trailing, alignment: .leading) {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text(formatMonthLabel(selectedMonth ?? Date()))
+                                            .font(.caption2)
+                                        valueTag(title: "支出", amount: sv.expense)
+                                        valueTag(title: "収入", amount: sv.income)
+                                        valueTag(title: "合計", amount: sv.total)
                                     }
-                                    return 1.0
-                                }())
-                            }
-                            .chartForegroundStyleScale([
-                                "支出": .red,
-                                "収入": .green,
-                                "合計": .blue
-                            ])
-                            .chartLegend(position: .automatic, alignment: .leading)
-                            .chartYAxis { AxisMarks(position: .leading) }
-                            .chartXScale(domain: xDomainForWindow(start: windowStartMonth, monthsCount: windowLength))
-                            .chartXAxis {
-                                AxisMarks(values: .stride(by: .month)) { _ in
-                                    AxisGridLine()
-                                    AxisTick()
-                                    AxisValueLabel(format: .dateTime.month(.abbreviated))
+                                    .opacity(0)
+                                    .offset(x: 8, y: labelYOffset)
                                 }
                             }
-                            .frame(width: contentWidth, height: 260)
-                            .id("chartContent")
                         }
-                        .padding(.trailing, 16)
-                        .gesture(
-                            MagnificationGesture()
-                                .onChanged { value in
-                                    // ズーム倍率を1.0〜3.0にクランプ
-                                    let clamped = min(max(1.0, value), 3.0)
-                                    zoomScale = clamped
-                                }
-                                .onEnded { _ in
-                                    // ズーム後に末尾へ自動スクロール
-                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                        proxy.scrollTo("chartContent", anchor: .trailing)
+                        .chartXScale(domain: 0...1)
+                        .chartYScale(domain: yDomain)
+                        .chartYAxis { AxisMarks(position: .leading) }
+                        // 右側のX軸と同じ高さ分の余白を確保する（表示はしない）
+                        .chartXAxis {
+                            AxisMarks(values: .automatic) { _ in
+                                AxisGridLine().foregroundStyle(.clear)
+                                AxisTick().foregroundStyle(.clear)
+                                AxisValueLabel().foregroundStyle(.clear)
+                            }
+                        }
+                        .frame(width: 72, height: 260)
+                        .allowsHitTesting(false)
+
+                        // 右: スクロールするプロット本体
+                        ScrollViewReader { proxy in
+                            ScrollView(.horizontal, showsIndicators: true) {
+                                // データ点数に応じて横幅を確保（1ヶ月あたりの幅はズームで可変）
+                                let monthsCount = max(1, windowLength)
+                                let baseMonthWidth: CGFloat = 60
+                                let trailingPadding: CGFloat = 100 // 末尾が見切れないための余白
+                                let contentWidth = max(UIScreen.main.bounds.width - 32 - 72 - 8, CGFloat(monthsCount) * baseMonthWidth * zoomScale + trailingPadding)
+
+                                VStack(alignment: .leading) {
+                                    Chart {
+                                        ForEach(seriesData) { point in
+                                            LineMark(
+                                                x: .value("月", point.month, unit: .month),
+                                                y: .value("金額", point.value),
+                                                series: .value("系列", point.series)
+                                            )
+                                            .interpolationMethod(.linear)
+                                            .foregroundStyle(by: .value("系列", point.series))
+
+                                            PointMark(
+                                                x: .value("月", point.month, unit: .month),
+                                                y: .value("金額", point.value)
+                                            )
+                                            .symbolSize(24)
+                                            .foregroundStyle(by: .value("系列", point.series))
+                                            .opacity({ () -> Double in
+                                                if let lastRealMonth = seriesData.map({ $0.month }).max() {
+                                                    return point.month > lastRealMonth ? 0.0 : 1.0
+                                                }
+                                                return 1.0
+                                            }())
+                                        }
+
+                                        if let selectedMonth {
+                                            let v = valuesForMonth(selectedMonth)
+                                            let anchorY = max(v.expense, v.income, v.total)
+
+                                            // 選択月のガイド（薄い縦線）
+                                            RuleMark(x: .value("選択月", selectedMonth, unit: .month))
+                                                .foregroundStyle(.secondary.opacity(0.6))
+                                                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+
+                                            // 選択月の各点を強調（ラベルは1列のスタックで出す）
+                                            PointMark(
+                                                x: .value("月", selectedMonth, unit: .month),
+                                                y: .value("金額", v.expense)
+                                            )
+                                            .symbolSize(80)
+                                            .foregroundStyle(.red)
+
+                                            PointMark(
+                                                x: .value("月", selectedMonth, unit: .month),
+                                                y: .value("金額", v.income)
+                                            )
+                                            .symbolSize(80)
+                                            .foregroundStyle(.green)
+
+                                            PointMark(
+                                                x: .value("月", selectedMonth, unit: .month),
+                                                y: .value("金額", v.total)
+                                            )
+                                            .symbolSize(80)
+                                            .foregroundStyle(.blue)
+
+                                            // ラベルは同じx座標に1列で表示（重なりなし）
+                                            PointMark(
+                                                x: .value("月", selectedMonth, unit: .month),
+                                                y: .value("金額", anchorY)
+                                            )
+                                            .opacity(0) // アンカー用（表示しない）
+                                            .annotation(position: labelOnLeft ? .leading : .trailing, alignment: labelOnLeft ? .trailing : .leading) {
+                                                VStack(alignment: .leading, spacing: 6) {
+                                                    Text(formatMonthLabel(selectedMonth))
+                                                        .font(.caption2)
+                                                        .foregroundStyle(.secondary)
+
+                                                    valueTag(title: "支出", amount: v.expense)
+                                                    valueTag(title: "収入", amount: v.income)
+                                                    valueTag(title: "合計", amount: v.total)
+                                                }
+                                                .offset(x: labelOnLeft ? -8 : 8, y: labelYOffset)
+                                            }
+                                        }
                                     }
+                                    .chartYScale(domain: yDomain)
+                                    .chartForegroundStyleScale([
+                                        "支出": .red,
+                                        "収入": .green,
+                                        "合計": .blue
+                                    ])
+                                    .chartLegend(.hidden)
+                                    .chartYAxis(.hidden)
+                                    .chartXScale(domain: xDomainForWindow(start: windowStartMonth, monthsCount: windowLength))
+                                    .chartXAxis {
+                                        AxisMarks(values: .stride(by: .month)) { _ in
+                                            AxisGridLine()
+                                            AxisTick()
+                                            AxisValueLabel(format: .dateTime.month(.abbreviated))
+                                        }
+                                    }
+                                    .chartOverlay { proxy in
+                                        GeometryReader { geo in
+                                            Rectangle().fill(Color.clear).contentShape(Rectangle())
+                                                .gesture(
+                                                    SpatialTapGesture()
+                                                        .onEnded { value in
+                                                            let plotFrame = geo[proxy.plotAreaFrame]
+                                                            let xInPlot = value.location.x - plotFrame.origin.x
+                                                            guard xInPlot >= 0, xInPlot <= plotFrame.size.width else { return }
+
+                                                            if let date: Date = proxy.value(atX: xInPlot) {
+                                                                let month = startOfMonth(date)
+                                                                // ウィンドウ外をタップした場合は無視
+                                                                let domain = xDomainForWindow(start: windowStartMonth, monthsCount: windowLength)
+                                                                if month >= domain.lowerBound && month <= domain.upperBound {
+                                                                    withAnimation(.easeInOut(duration: 0.25)) {
+                                                                        selectedMonth = month
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                )
+                                        }
+                                    }
+                                    .animation(.easeInOut(duration: 0.25), value: selectedMonth)
+                                    .frame(width: contentWidth, height: 260)
+                                    .id("chartContent")
                                 }
-                        )
-                    }
-                    .onAppear {
-                        // 初回表示時に末尾へスクロールして最新データが見えるようにする
-                        if !hasAutoScrolledToEnd {
-                            hasAutoScrolledToEnd = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                withAnimation(.easeInOut(duration: 0.25)) {
-                                    proxy.scrollTo("chartContent", anchor: .trailing)
+                                .padding(.trailing, 16)
+                                .gesture(
+                                    MagnificationGesture()
+                                        .onChanged { value in
+                                            // ズーム倍率を1.0〜3.0にクランプ
+                                            let clamped = min(max(1.0, value), 3.0)
+                                            zoomScale = clamped
+                                        }
+                                        .onEnded { _ in
+                                            // ズーム後に末尾へ自動スクロール
+                                            withAnimation(.easeInOut(duration: 0.2)) {
+                                                proxy.scrollTo("chartContent", anchor: .trailing)
+                                            }
+                                        }
+                                )
+                            }
+                            .onAppear {
+                                // 初回表示時に末尾へスクロールして最新データが見えるようにする
+                                if !hasAutoScrolledToEnd {
+                                    hasAutoScrolledToEnd = true
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        withAnimation(.easeInOut(duration: 0.25)) {
+                                            proxy.scrollTo("chartContent", anchor: .trailing)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -163,6 +322,18 @@ private extension AnalysisView {
                 Spacer()
             }
         }
+    }
+}
+
+private extension AnalysisView {
+    var fixedLegend: some View {
+        HStack(alignment: .center, spacing: 14) {
+            legendRow(color: .red, title: "支出")
+            legendRow(color: .green, title: "収入")
+            legendRow(color: .blue, title: "合計")
+            Spacer(minLength: 0)
+        }
+        .font(.caption)
     }
 }
 
@@ -269,10 +440,82 @@ private extension AnalysisView {
         let comps = cal.dateComponents([.month], from: startOfMonth(from), to: startOfMonth(to))
         return comps.month
     }
+
+    func valuesForMonth(_ month: Date) -> (expense: Double, income: Double, total: Double) {
+        let target = startOfMonth(month)
+        var exp = 0.0
+        var inc = 0.0
+        var total = 0.0
+
+        for p in seriesData {
+            if startOfMonth(p.month) != target { continue }
+            switch p.series {
+            case "支出": exp = p.value
+            case "収入": inc = p.value
+            case "合計": total = p.value
+            default: break
+            }
+        }
+        return (exp, inc, total)
+    }
+
+    func formatMonthLabel(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.calendar = Calendar.current
+        f.locale = Locale.current
+        f.dateFormat = "yyyy/MM"
+        return f.string(from: date)
+    }
+
+    func formatAmountJPY(_ value: Double) -> String {
+        value.formatted(.currency(code: "JPY"))
+    }
+
+    @ViewBuilder
+    func valueTag(title: String, amount: Double) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(formatAmountJPY(amount))
+                .font(.caption)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(.background)
+                .shadow(radius: 2)
+        )
+    }
+
+    func yDomainForSeries(_ points: [MonthlySeriesPoint]) -> ClosedRange<Double> {
+        guard let minV = points.map({ $0.value }).min(), let maxV = points.map({ $0.value }).max() else {
+            return 0...1
+        }
+        if minV == maxV {
+            let pad = max(1.0, abs(minV) * 0.1)
+            return (minV - pad)...(maxV + pad)
+        }
+        let range = maxV - minV
+        let pad = max(range * 0.12, 1.0)
+        return (minV - pad)...(maxV + pad)
+    }
+
+    @ViewBuilder
+    func legendRow(color: Color, title: String) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+            Text(title)
+                .foregroundStyle(.secondary)
+        }
+    }
 }
 
 #Preview {
     AnalysisView()
         .environmentObject(ExpenseViewModel())
 }
-
