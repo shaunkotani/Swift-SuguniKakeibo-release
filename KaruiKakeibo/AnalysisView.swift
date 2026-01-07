@@ -254,7 +254,7 @@ private extension AnalysisView {
     func xDomainForWindow(start: Date, monthsCount: Int) -> ClosedRange<Date> {
         let cal = Calendar.current
         let start = startOfMonth(start)
-        let endMonthStart = cal.date(byAdding: .month, value: monthsCount - 1, to: start) ?? start
+        let endMonthStart = cal.date(byAdding: .month, value: monthsCount, to: start) ?? start
         return start...endMonthStart
     }
 
