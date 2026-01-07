@@ -168,7 +168,7 @@ struct TabBarControllerRepresentable: UIViewControllerRepresentable {
             }
         }
 
-        print("✅ UITabBarController 생성 완료")
+        print("✅ UITabBarController Completed!")
         return tabBarController
     }
 
