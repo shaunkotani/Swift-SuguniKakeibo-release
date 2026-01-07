@@ -35,7 +35,7 @@ struct AnalysisView: View {
         return cal.date(byAdding: .month, value: -11, to: startOfThisMonth) ?? startOfThisMonth
     }()
     @State private var windowLength: Int = 12
-    @State private var zoomScale: CGFloat = 1.0
+    @State private var zoomScale: CGFloat = 0.75
     @State private var zoomRecenterTick: Int = 0
     @State private var lastLiveRecenterTs: TimeInterval = 0
     @State private var visibleCenterMonth: Date? = nil
@@ -500,7 +500,7 @@ private extension AnalysisView {
                 HStack {
                     Image(systemName: "list.bullet.rectangle.fill")
                         .foregroundStyle(.green)
-                    Text("支出の履歴")
+                    Text("全ての支出履歴")
                     Spacer()
                     Image(systemName: "chevron.right").foregroundStyle(.secondary)
                 }

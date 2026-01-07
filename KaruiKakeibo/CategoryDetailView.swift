@@ -23,7 +23,9 @@ struct CategoryDetailView: View {
     let categoryName: String
     let categoryId: Int
     let selectedMonth: Date
-    
+
+    @State private var selectedExpenseId: Int? = nil
+
     // 1. 動的にアイコンを取得するプロパティを追加
     private var categoryIcon: String {
         return viewModel.categoryIcon(for: categoryId)
@@ -71,6 +73,22 @@ struct CategoryDetailView: View {
         return formatter
     }
 
+    private var expenseSheetItem: Binding<ExpenseSheetItem?> {
+        Binding(
+            get: {
+                selectedExpenseId.map { ExpenseSheetItem(id: $0) }
+            },
+            set: { _ in
+                selectedExpenseId = nil
+            }
+        )
+    }
+
+    private func refreshAfterEdit() {
+        // 編集後に最新データを反映
+        viewModel.refreshAllData()
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -94,6 +112,12 @@ struct CategoryDetailView: View {
                             categoryColor: categoryColor
                         )
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                            impactFeedback.impactOccurred()
+                            selectedExpenseId = expense.id
+                        }
                     }
                 }
                 .listStyle(.plain)
@@ -102,6 +126,13 @@ struct CategoryDetailView: View {
             }
             .navigationTitle("\(categoryName)の詳細")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(item: expenseSheetItem, onDismiss: refreshAfterEdit) { item in
+                NavigationStack {
+                    EditExpenseView(expenseId: item.id)
+                        .environmentObject(viewModel)
+                }
+                .accessibilityLabel("支出編集画面")
+            }
             .navigationBarBackButtonHidden(true)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -380,4 +411,3 @@ struct CategoryDetailView_Previews: PreviewProvider {
         .environmentObject(ExpenseViewModel())
     }
 }
-

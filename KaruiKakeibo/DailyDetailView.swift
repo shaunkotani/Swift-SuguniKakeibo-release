@@ -12,6 +12,7 @@ struct DailyDetailView: View {
     @Environment(\.dismiss) private var dismiss
     let selectedDate: Date
     @State private var selectedCategoryFilter: Int = -1 // -1 = 全て, その他はカテゴリID
+    @State private var selectedExpenseId: Int? = nil
     
     private var availableCategories: [(id: Int, name: String)] {
         let calendar = Calendar.current
@@ -85,6 +86,22 @@ struct DailyDetailView: View {
         let weekday = calendar.component(.weekday, from: selectedDate)
         return weekday == 1 || weekday == 7 // 日曜日(1) または 土曜日(7)
     }
+
+    private var expenseSheetItem: Binding<ExpenseSheetItem?> {
+        Binding(
+            get: {
+                selectedExpenseId.map { ExpenseSheetItem(id: $0) }
+            },
+            set: { _ in
+                selectedExpenseId = nil
+            }
+        )
+    }
+
+    private func refreshAfterEdit() {
+        // 編集後に最新データを反映
+        viewModel.refreshAllData()
+    }
     
     var body: some View {
         ZStack {
@@ -123,6 +140,12 @@ struct DailyDetailView: View {
                             viewModel: viewModel
                         )
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                            impactFeedback.impactOccurred()
+                            selectedExpenseId = expense.id
+                        }
                     }
                 }
                 .listStyle(.plain)
@@ -221,6 +244,13 @@ struct DailyDetailView: View {
         }
         .navigationTitle("\(shortDateFormatter.string(from: selectedDate))の支出")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: expenseSheetItem, onDismiss: refreshAfterEdit) { item in
+            NavigationStack {
+                EditExpenseView(expenseId: item.id)
+                    .environmentObject(viewModel)
+            }
+            .accessibilityLabel("支出編集画面")
+        }
         .overlay {
             if filteredExpenses.isEmpty {
                 VStack(spacing: 16) {
