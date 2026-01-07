@@ -16,6 +16,14 @@ struct MonthlySeriesPoint: Identifiable {
     let series: String // "支出" / "収入" / "合計"
 }
 
+// Track x positions of month anchors inside the horizontal ScrollView viewport
+private struct MonthMidXPreferenceKey: PreferenceKey {
+    static var defaultValue: [Date: CGFloat] = [:]
+    static func reduce(value: inout [Date: CGFloat], nextValue: () -> [Date: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
 // MARK: - Analysis View
 struct AnalysisView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
@@ -28,6 +36,11 @@ struct AnalysisView: View {
     }()
     @State private var windowLength: Int = 12
     @State private var zoomScale: CGFloat = 1.0
+    @State private var zoomRecenterTick: Int = 0
+    @State private var lastLiveRecenterTs: TimeInterval = 0
+    @State private var visibleCenterMonth: Date? = nil
+    @State private var zoomFocusMonth: Date? = nil
+    @State private var scrollViewportWidth: CGFloat = 0
 
     private let zoomMin: CGFloat = 0.25
     private let zoomMax: CGFloat = 3.0
@@ -162,14 +175,24 @@ private extension AnalysisView {
 
                         // 右: スクロールするプロット本体
                         ScrollViewReader { proxy in
+                            let cal = Calendar.current
+                            let monthsCount = max(1, windowLength)
+                            let baseMonthWidth: CGFloat = 60
+                            let trailingPadding: CGFloat = 100 // 末尾が見切れないための余白
+                            let monthAnchors: [Date] = (0..<monthsCount).compactMap { offset in
+                                cal.date(byAdding: .month, value: offset, to: startOfMonth(windowStartMonth))
+                            }
+                            let fallbackMonth: Date = {
+                                if let sm = selectedMonth { return startOfMonth(sm) }
+                                if !monthAnchors.isEmpty { return monthAnchors[monthAnchors.count / 2] }
+                                return startOfMonth(Date())
+                            }()
+
                             ScrollView(.horizontal, showsIndicators: true) {
                                 // データ点数に応じて横幅を確保（1ヶ月あたりの幅はズームで可変）
-                                let monthsCount = max(1, windowLength)
-                                let baseMonthWidth: CGFloat = 60
-                                let trailingPadding: CGFloat = 100 // 末尾が見切れないための余白
                                 let contentWidth = max(UIScreen.main.bounds.width - 32 - 72 - 8, CGFloat(monthsCount) * baseMonthWidth * zoomScale + trailingPadding)
 
-                                VStack(alignment: .leading) {
+                                VStack(alignment: .leading, spacing: 0) {
                                     Chart {
                                         ForEach(seriesData) { point in
                                             LineMark(
@@ -288,22 +311,77 @@ private extension AnalysisView {
                                     .animation(.easeInOut(duration: 0.25), value: selectedMonth)
                                     .frame(width: contentWidth, height: 260)
                                     .id("chartContent")
+
+                                    // ズーム後に「中央」を基準に寄せるためのアンカー（表示しない）
+                                    HStack(spacing: 0) {
+                                        ForEach(monthAnchors, id: \.self) { m in
+                                            Color.clear
+                                                .frame(width: baseMonthWidth * zoomScale, height: 1)
+                                                .background(
+                                                    GeometryReader { g in
+                                                        Color.clear.preference(
+                                                            key: MonthMidXPreferenceKey.self,
+                                                            value: [m: g.frame(in: .named("ChartScroll")).midX]
+                                                        )
+                                                    }
+                                                )
+                                                .id(m)
+                                        }
+                                        Color.clear
+                                            .frame(width: trailingPadding, height: 1)
+                                    }
+                                    .frame(width: contentWidth, height: 1, alignment: .leading)
+                                    .allowsHitTesting(false)
                                 }
                                 .padding(.trailing, 16)
                                 .gesture(
                                     MagnificationGesture()
                                         .onChanged { value in
-                                            // ズーム倍率を1.0〜3.0にクランプ
+                                            // ズーム倍率をクランプ
                                             let clamped = min(max(zoomMin, value), zoomMax)
                                             zoomScale = clamped
+
+                                            // ピンチ中も中央（表示範囲の中心月）を維持する
+                                            let now = Date().timeIntervalSinceReferenceDate
+                                            if now - lastLiveRecenterTs >= 0.03 { // 約30fps相当で間引き
+                                                lastLiveRecenterTs = now
+                                                // ピンチ開始時点の「見えている中心月」を固定して使う
+                                                if zoomFocusMonth == nil {
+                                                    zoomFocusMonth = visibleCenterMonth ?? selectedMonth.map(startOfMonth) ?? fallbackMonth
+                                                }
+                                                let target = zoomFocusMonth ?? visibleCenterMonth ?? selectedMonth.map(startOfMonth) ?? fallbackMonth
+                                                DispatchQueue.main.async {
+                                                    withAnimation(nil) {
+                                                        proxy.scrollTo(target, anchor: .center)
+                                                    }
+                                                }
+                                            }
                                         }
                                         .onEnded { _ in
-                                            // ズーム後に末尾へ自動スクロール
-                                            withAnimation(.easeInOut(duration: 0.2)) {
-                                                proxy.scrollTo("chartContent", anchor: .trailing)
+                                            // ズーム後に中央（表示範囲の中心）へ寄せる
+                                            zoomRecenterTick += 1
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                                zoomFocusMonth = nil
                                             }
                                         }
                                 )
+                            }
+                            .coordinateSpace(name: "ChartScroll")
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear
+                                        .onAppear { scrollViewportWidth = geo.size.width }
+                                        .onChange(of: geo.size.width) { newWidth in
+                                            scrollViewportWidth = newWidth
+                                        }
+                                }
+                            )
+                            .onPreferenceChange(MonthMidXPreferenceKey.self) { positions in
+                                guard scrollViewportWidth > 0 else { return }
+                                let centerX = scrollViewportWidth / 2
+                                if let best = positions.min(by: { abs($0.value - centerX) < abs($1.value - centerX) })?.key {
+                                    visibleCenterMonth = best
+                                }
                             }
                             .onAppear {
                                 // 初回表示時に末尾へスクロールして最新データが見えるようにする
@@ -312,6 +390,18 @@ private extension AnalysisView {
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                         withAnimation(.easeInOut(duration: 0.25)) {
                                             proxy.scrollTo("chartContent", anchor: .trailing)
+                                        }
+                                    }
+                                }
+                            }
+                            .onChange(of: zoomRecenterTick) { _ in
+                                // レイアウト更新後に、中央へ寄せる
+                                DispatchQueue.main.async {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        let target = zoomFocusMonth ?? visibleCenterMonth ?? selectedMonth.map(startOfMonth) ?? fallbackMonth
+                                        proxy.scrollTo(target, anchor: .center)
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                            zoomFocusMonth = nil
                                         }
                                     }
                                 }
@@ -331,7 +421,9 @@ private extension AnalysisView {
                 HStack(spacing: 8) {
                     Button {
                         withAnimation(.easeInOut(duration: 0.15)) {
+                            zoomFocusMonth = visibleCenterMonth ?? selectedMonth.map(startOfMonth) ?? windowCenterMonth(start: windowStartMonth, monthsCount: windowLength)
                             zoomScale = max(zoomMin, zoomScale - zoomStep)
+                            zoomRecenterTick += 1
                         }
                     } label: {
                         Image(systemName: "minus")
@@ -345,7 +437,9 @@ private extension AnalysisView {
 
                     Button {
                         withAnimation(.easeInOut(duration: 0.15)) {
+                            zoomFocusMonth = visibleCenterMonth ?? selectedMonth.map(startOfMonth) ?? windowCenterMonth(start: windowStartMonth, monthsCount: windowLength)
                             zoomScale = min(zoomMax, zoomScale + zoomStep)
+                            zoomRecenterTick += 1
                         }
                     } label: {
                         Image(systemName: "plus")
@@ -470,6 +564,12 @@ private extension AnalysisView {
         let cal = Calendar.current
         let comps = cal.dateComponents([.year, .month], from: date)
         return cal.date(from: comps) ?? date
+    }
+
+    func windowCenterMonth(start: Date, monthsCount: Int) -> Date {
+        let cal = Calendar.current
+        let idx = max(0, monthsCount / 2)
+        return cal.date(byAdding: .month, value: idx, to: startOfMonth(start)) ?? startOfMonth(start)
     }
 
     func monthsBetween(from: Date, to: Date) -> Int? {
