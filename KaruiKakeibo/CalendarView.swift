@@ -171,8 +171,11 @@ struct CalendarView: View {
             .padding(.horizontal)
             .padding(.bottom, 8)
 
+            let prevMonth = Calendar.current.date(byAdding: .month, value: -1, to: month) ?? month
+            let prevMonthTotal = monthlyNetTotal(for: prevMonth)
             MonthSummaryHeaderView(
                 selectedMonth: month,
+                previousMonthTotal: prevMonthTotal,
                 dailyTotals: dailyTotals,
                 dailyExpenseTotals: dailyExpenseTotals,
                 dailyIncomeTotals: dailyIncomeTotals,
@@ -427,6 +430,23 @@ struct CalendarView: View {
     }
 
     // 入力タブに遷移する関数
+
+    /// 指定した月の「収入 - 支出（±）」合計を返す（カレンダー表示の合計と同じ定義）
+    private func monthlyNetTotal(for month: Date) -> Double {
+        let calendar = Calendar.current
+        let targetMonth = calendar.component(.month, from: month)
+        let targetYear = calendar.component(.year, from: month)
+
+        let filtered = viewModel.expenses.filter { expense in
+            let m = calendar.component(.month, from: expense.date)
+            let y = calendar.component(.year, from: expense.date)
+            return m == targetMonth && y == targetYear
+        }
+
+        let income = filtered.filter { $0.type == .income }.reduce(0.0) { $0 + $1.amount }
+        let expense = filtered.filter { $0.type == .expense }.reduce(0.0) { $0 + $1.amount }
+        return income - expense
+    }
     private func navigateToInputTab() {
         selectedTab = 2
 
@@ -839,6 +859,7 @@ struct CalendarCellButtonStyle: ButtonStyle {
 // 月間サマリーヘダー
 struct MonthSummaryHeaderView: View {
     let selectedMonth: Date
+    let previousMonthTotal: Double
     let dailyTotals: [String: Double]
     let dailyExpenseTotals: [String: Double]
     let dailyIncomeTotals: [String: Double]
@@ -863,6 +884,18 @@ struct MonthSummaryHeaderView: View {
         incomeTotal - expenseTotal
     }
 
+    private var monthChangeSymbolName: String? {
+        if totalAmount > previousMonthTotal { return "arrow.up" }
+        if totalAmount < previousMonthTotal { return "arrow.down" }
+        return nil
+    }
+
+    private var monthChangeColor: Color {
+        if totalAmount > previousMonthTotal { return .green }
+        if totalAmount < previousMonthTotal { return .red }
+        return .secondary
+    }
+
     private var daysCount: Int {
         // Count unique days from keys in expense and income totals
         let keys = Set(dailyExpenseTotals.keys).union(Set(dailyIncomeTotals.keys))
@@ -881,12 +914,20 @@ struct MonthSummaryHeaderView: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
 
-                HStack {
+                HStack(spacing: 8) {
                     Text("¥\(format0(totalAmount))")
                         .font(.largeTitle)
                         .fontWeight(.bold)
                         .foregroundColor(.primary)
                         .animation(.easeInOut(duration: 0.3), value: totalAmount)
+
+                    if let symbol = monthChangeSymbolName {
+                        Image(systemName: symbol)
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(monthChangeColor)
+                            .accessibilityLabel(symbol == "arrow.up" ? "先月より増加" : "先月より減少")
+                    }
                 }
             }
 

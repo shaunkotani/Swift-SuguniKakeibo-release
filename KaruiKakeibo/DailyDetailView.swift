@@ -19,16 +19,11 @@ struct DailyDetailView: View {
         let dailyExpenses = viewModel.expenses.filter { expense in
             calendar.isDate(expense.date, inSameDayAs: selectedDate)
         }
-        // その日のタイプ（支出/収入）を推定
-        let activeType: TransactionType = {
-            if let first = filteredExpenses.first { return first.type }
-            if let any = dailyExpenses.first { return any.type }
-            return .expense
-        }()
-        // タイプ別カテゴリ（当日使われたカテゴリのみ）
-        let idsOfType = Set(dailyExpenses.filter { $0.type == activeType }.map { $0.categoryId })
-        let typedCategories = viewModel.categoriesByType(activeType)
-        return typedCategories.filter { idsOfType.contains($0.id) }.sorted { $0.name < $1.name }
+        // 当日使われたカテゴリ（支出/収入などタイプは問わない）
+        let ids = Set(dailyExpenses.map { $0.categoryId })
+        return viewModel.categories
+            .filter { ids.contains($0.id) }
+            .sorted { $0.name < $1.name }
     }
     
     private var filteredExpenses: [Expense] {
@@ -36,18 +31,12 @@ struct DailyDetailView: View {
         let dailyExpenses = viewModel.expenses.filter { expense in
             calendar.isDate(expense.date, inSameDayAs: selectedDate)
         }
-        // 選択カテゴリからタイプを優先推定
-        let activeType: TransactionType = {
-            if selectedCategoryFilter != -1 {
-                return viewModel.categoryType(for: selectedCategoryFilter)
-            }
-            return dailyExpenses.first?.type ?? .expense
-        }()
-        let typed = dailyExpenses.filter { $0.type == activeType }
         if selectedCategoryFilter == -1 {
-            return typed.sorted { $0.date > $1.date }
+            return dailyExpenses.sorted { $0.date > $1.date }
         } else {
-            return typed.filter { $0.categoryId == selectedCategoryFilter }.sorted { $0.date > $1.date }
+            return dailyExpenses
+                .filter { $0.categoryId == selectedCategoryFilter }
+                .sorted { $0.date > $1.date }
         }
     }
     
