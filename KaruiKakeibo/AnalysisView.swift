@@ -27,6 +27,8 @@ struct AnalysisView: View {
         return cal.date(byAdding: .month, value: -11, to: startOfThisMonth) ?? startOfThisMonth
     }()
     @State private var windowLength: Int = 12
+    @State private var zoomScale: CGFloat = 1.0
+    @State private var hasAutoScrolledToEnd: Bool = false
 
     private var seriesData: [MonthlySeriesPoint] {
         buildSeries(startMonth: windowStartMonth, monthsCount: windowLength)
@@ -51,30 +53,8 @@ struct AnalysisView: View {
 // MARK: - Header Controls
 private extension AnalysisView {
     var headerControls: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Button(action: { shiftWindow(by: -1) }) {
-                    Image(systemName: "chevron.left")
-                        .font(.title3)
-                        .frame(width: 36, height: 36)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(PlainButtonStyle())
-
-                Text(windowRangeLabel)
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-
-                Button(action: { shiftWindow(by: 1) }) {
-                    Image(systemName: "chevron.right")
-                        .font(.title3)
-                        .frame(width: 36, height: 36)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-            .accessibilityElement(children: .contain)
-        }
+        // ヘッダーは不要になったため空にします
+        EmptyView()
     }
 }
 
@@ -96,50 +76,84 @@ private extension AnalysisView {
                 }
                 .frame(maxWidth: .infinity, minHeight: 220)
             } else {
-                Chart(seriesData) { point in
-                    LineMark(
-                        x: .value("月", point.month, unit: .month),
-                        y: .value("金額", point.value),
-                        series: .value("系列", point.series)
-                    )
-                    .interpolationMethod(.linear)
-                    .foregroundStyle(by: .value("系列", point.series))
+                // 横スクロール + ピンチズーム対応
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        // データ点数に応じて横幅を確保（1ヶ月あたりの幅はズームで可変）
+                        let monthsCount = max(1, windowLength)
+                        let baseMonthWidth: CGFloat = 60
+                        let trailingPadding: CGFloat = 32 // 末尾が見切れないための余白
+                        let contentWidth = max(UIScreen.main.bounds.width - 32, CGFloat(monthsCount) * baseMonthWidth * zoomScale + trailingPadding)
 
-                    PointMark(
-                        x: .value("月", point.month, unit: .month),
-                        y: .value("金額", point.value)
-                    )
-                    .symbolSize(24)
-                    .foregroundStyle(by: .value("系列", point.series))
-                }
-                .chartForegroundStyleScale([
-                    "支出": .red,
-                    "収入": .green,
-                    "合計": .blue
-                ])
-                .chartLegend(position: .automatic, alignment: .leading)
-                .chartYAxis { AxisMarks(position: .leading) }
-                .chartXScale(domain: xDomainForWindow(start: windowStartMonth, monthsCount: windowLength))
-                .chartXAxis {
-                    AxisMarks(values: .stride(by: .month)) { _ in
-                        AxisGridLine()
-                        AxisTick()
-                        AxisValueLabel(format: .dateTime.month(.abbreviated))
+                        VStack(alignment: .leading) {
+                            Chart(seriesData) { point in
+                                LineMark(
+                                    x: .value("月", point.month, unit: .month),
+                                    y: .value("金額", point.value),
+                                    series: .value("系列", point.series)
+                                )
+                                .interpolationMethod(.linear)
+                                .foregroundStyle(by: .value("系列", point.series))
+
+                                PointMark(
+                                    x: .value("月", point.month, unit: .month),
+                                    y: .value("金額", point.value)
+                                )
+                                .symbolSize(24)
+                                .foregroundStyle(by: .value("系列", point.series))
+                                .opacity({ () -> Double in
+                                    if let lastRealMonth = seriesData.map({ $0.month }).max() {
+                                        return point.month > lastRealMonth ? 0.0 : 1.0
+                                    }
+                                    return 1.0
+                                }())
+                            }
+                            .chartForegroundStyleScale([
+                                "支出": .red,
+                                "収入": .green,
+                                "合計": .blue
+                            ])
+                            .chartLegend(position: .automatic, alignment: .leading)
+                            .chartYAxis { AxisMarks(position: .leading) }
+                            .chartXScale(domain: xDomainForWindow(start: windowStartMonth, monthsCount: windowLength))
+                            .chartXAxis {
+                                AxisMarks(values: .stride(by: .month)) { _ in
+                                    AxisGridLine()
+                                    AxisTick()
+                                    AxisValueLabel(format: .dateTime.month(.abbreviated))
+                                }
+                            }
+                            .frame(width: contentWidth, height: 260)
+                            .id("chartContent")
+                        }
+                        .padding(.trailing, 16)
+                        .gesture(
+                            MagnificationGesture()
+                                .onChanged { value in
+                                    // ズーム倍率を1.0〜3.0にクランプ
+                                    let clamped = min(max(1.0, value), 3.0)
+                                    zoomScale = clamped
+                                }
+                                .onEnded { _ in
+                                    // ズーム後に末尾へ自動スクロール
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        proxy.scrollTo("chartContent", anchor: .trailing)
+                                    }
+                                }
+                        )
                     }
-                }
-                .frame(minHeight: 260)
-                .gesture(
-                    DragGesture(minimumDistance: 10)
-                        .onEnded { value in
-                            let t = value.translation.width
-                            let pt = value.predictedEndTranslation.width
-                            if t < -40 || pt < -80 {
-                                shiftWindow(by: 1, animated: true) // 左スワイプで先へ
-                            } else if t > 40 || pt > 80 {
-                                shiftWindow(by: -1, animated: true) // 右スワイプで前へ
+                    .onAppear {
+                        // 初回表示時に末尾へスクロールして最新データが見えるようにする
+                        if !hasAutoScrolledToEnd {
+                            hasAutoScrolledToEnd = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    proxy.scrollTo("chartContent", anchor: .trailing)
+                                }
                             }
                         }
-                )
+                    }
+                }
             }
         } label: {
             HStack {
@@ -227,8 +241,6 @@ private extension AnalysisView {
 
         var points: [MonthlySeriesPoint] = []
         for (i, m) in monthStarts.enumerated() {
-            // 未来の月はプロットしない
-            if m > currentMonthStart { continue }
             let exp = expenseBuckets[i]
             let inc = incomeBuckets[i]
             let total = inc - exp // 合計 = 収入 - 支出
@@ -243,9 +255,7 @@ private extension AnalysisView {
         let cal = Calendar.current
         let start = startOfMonth(start)
         let endMonthStart = cal.date(byAdding: .month, value: monthsCount - 1, to: start) ?? start
-        let current = startOfMonth(Date())
-        let clampedEnd = min(endMonthStart, current)
-        return start...clampedEnd
+        return start...endMonthStart
     }
 
     func startOfMonth(_ date: Date) -> Date {
@@ -259,32 +269,10 @@ private extension AnalysisView {
         let comps = cal.dateComponents([.month], from: startOfMonth(from), to: startOfMonth(to))
         return comps.month
     }
-
-    func shiftWindow(by months: Int, animated: Bool = true) {
-        if let newStart = Calendar.current.date(byAdding: .month, value: months, to: windowStartMonth) {
-            if animated {
-                withAnimation(.interactiveSpring(response: 0.25, dampingFraction: 0.85, blendDuration: 0.2)) {
-                    windowStartMonth = newStart
-                }
-            } else {
-                windowStartMonth = newStart
-            }
-        }
-    }
-
-    var windowRangeLabel: String {
-        let cal = Calendar.current
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ja_JP")
-        formatter.dateFormat = "yyyy年M月"
-        let startLabel = formatter.string(from: startOfMonth(windowStartMonth))
-        let endMonthStart = cal.date(byAdding: .month, value: max(0, windowLength - 1), to: startOfMonth(windowStartMonth)) ?? windowStartMonth
-        let endLabel = formatter.string(from: endMonthStart)
-        return "\(startLabel) 〜 \(endLabel)"
-    }
 }
 
 #Preview {
     AnalysisView()
         .environmentObject(ExpenseViewModel())
 }
+

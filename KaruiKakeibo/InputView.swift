@@ -21,6 +21,7 @@ struct InputView: View {
     @State private var isProcessing = false
     @State private var keyboardHeight: CGFloat = 0
     @State private var showFloatingButton: Bool = true
+    @State private var showingClearConfirm = false
     @FocusState private var isAmountFocused: Bool
     @FocusState private var isNoteFocused: Bool
     
@@ -237,7 +238,7 @@ struct InputView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("クリア") {
-                        clearFields()
+                        showingClearConfirm = true
                     }
                     .foregroundColor(.orange)
                     .disabled(isProcessing)
@@ -267,6 +268,14 @@ struct InputView: View {
                     message: Text(alertMessage),
                     dismissButton: .default(Text("OK"))
                 )
+            }
+            .alert("入力内容をクリア", isPresented: $showingClearConfirm) {
+                Button("クリア", role: .destructive) {
+                    clearFields()
+                }
+                Button("キャンセル", role: .cancel) { }
+            } message: {
+                Text("現在の入力内容をすべてクリアしますか？")
             }
             .overlay(
                 successOverlay
