@@ -4,6 +4,13 @@
 //
 
 import SwiftUI
+// MARK: - PreferenceKey to track scroll offset (DailyDetailView)
+private struct ScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
 
 // NOTE: カテゴリは支出/収入で別管理されることを想定。ViewModel 側の typed API に対応。
 
@@ -13,6 +20,7 @@ struct DailyDetailView: View {
     let selectedDate: Date
     @State private var selectedCategoryFilter: Int = -1 // -1 = 全て, その他はカテゴリID
     @State private var selectedExpenseId: Int? = nil
+    @State private var scrollOffset: CGFloat = 0
     
     private var availableCategories: [(id: Int, name: String)] {
         let calendar = Calendar.current
@@ -93,74 +101,98 @@ struct DailyDetailView: View {
     }
     
     var body: some View {
+        // Collapsible behavior tuning
+        let collapseThreshold: CGFloat = 120
+        let topInfoHeight: CGFloat = 92
+        let summaryBlockHeight: CGFloat = 96
+        let categoryFilterHeight: CGFloat = availableCategories.isEmpty ? 0 : 150
+        let headerPadding: CGFloat = 16
+
+        let baseHeaderHeight = topInfoHeight + summaryBlockHeight + categoryFilterHeight + headerPadding
+        let minHeaderHeight = topInfoHeight + categoryFilterHeight + headerPadding
+
+        let progress = min(1, max(0, scrollOffset / collapseThreshold))
+        let currentHeaderHeight = max(minHeaderHeight, baseHeaderHeight - (summaryBlockHeight * progress))
+
         ZStack {
-            VStack {
-                // ヘッダー情報
-                DailyDetailHeaderView(
+            // Main scroll content
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // Track scroll offset
+                    GeometryReader { geo in
+                        Color.clear
+                            .preference(key: ScrollOffsetKey.self,
+                                        value: geo.frame(in: .named("dailyDetailScroll")).minY)
+                    }
+                    .frame(height: 0)
+
+                    // Reserve space for overlay header (dynamic height so the list expands when header collapses)
+                    Spacer().frame(height: currentHeaderHeight + 8)
+
+                    // Expense rows
+                    LazyVStack(spacing: 0) {
+                        ForEach(filteredExpenses) { expense in
+                            VStack(spacing: 0) {
+                                DailyDetailRowView(
+                                    expense: expense,
+                                    categories: viewModel.categories,
+                                    showCategory: selectedCategoryFilter == -1,
+                                    viewModel: viewModel
+                                )
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                                    impactFeedback.impactOccurred()
+                                    selectedExpenseId = expense.id
+                                }
+
+                                Divider()
+                                    .opacity(0.35)
+                            }
+                        }
+                    }
+                }
+            }
+            .coordinateSpace(name: "dailyDetailScroll")
+            .onPreferenceChange(ScrollOffsetKey.self) { value in
+                // value is positive when pulling down, negative when scrolling up
+                scrollOffset = max(0, -value)
+            }
+            .overlay(alignment: .top) {
+                DailyDetailCollapsibleHeader(
                     selectedDate: selectedDate,
                     expenseTotal: expenseTotal,
                     incomeTotal: incomeTotal,
                     netTotal: netTotal,
                     transactionCount: filteredExpenses.count,
                     isWeekend: isWeekend,
-                    selectedCategoryName: selectedCategoryFilter == -1 ? nil : availableCategories.first(where: { $0.id == selectedCategoryFilter })?.name
+                    selectedCategoryName: selectedCategoryFilter == -1 ? nil :
+                        availableCategories.first(where: { $0.id == selectedCategoryFilter })?.name,
+                    availableCategories: availableCategories,
+                    selectedCategoryFilter: $selectedCategoryFilter,
+                    viewModel: viewModel,
+                    collapseProgress: progress,
+                    headerHeight: currentHeaderHeight,
+                    summaryBlockHeight: summaryBlockHeight
                 )
                 .padding(.horizontal)
-                .padding(.bottom, 16)
-                
-                // カテゴリフィルター
-                if !availableCategories.isEmpty {
-                    CategoryFilterView(
-                        availableCategories: availableCategories,
-                        selectedCategoryFilter: $selectedCategoryFilter,
-                        viewModel: viewModel
-                    )
-                    .padding(.horizontal)
-                    .padding(.bottom, 16)
-                }
-                
-                // 支出履歴リスト
-                List {
-                    ForEach(filteredExpenses) { expense in
-                        DailyDetailRowView(
-                            expense: expense,
-                            categories: viewModel.categories,
-                            showCategory: selectedCategoryFilter == -1,
-                            viewModel: viewModel
-                        )
-                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                            impactFeedback.impactOccurred()
-                            selectedExpenseId = expense.id
-                        }
-                    }
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .background(Color.clear)
+                .padding(.top, 8)
             }
-            
+
+            // Floating bottom buttons (元のまま)
             VStack {
                 Spacer()
                 HStack(spacing: 16) {
                     if #available(iOS 26.0, *) {
                         Button(action: {
-                            // この日に追加: 入力タブへ遷移し、日付を12:00で設定
                             let impactFeedback = UIImpactFeedbackGenerator(style: .light)
                             impactFeedback.impactOccurred()
-                            
-                            // 12:00 に補正
+
                             let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: selectedDate) ?? selectedDate
-                            
-                            // ViewModelへ指示
                             viewModel.pendingInputDate = noon
-                            
-                            // 入力タブへ遷移を通知（タブ選択はContentViewのバインディング経由のため通知で指示）
                             NotificationCenter.default.post(name: .switchTab, object: nil, userInfo: ["index": 2])
-                            
-                            // 画面を閉じる
                             dismiss()
                         }) {
                             HStack(spacing: 8) {
@@ -172,7 +204,7 @@ struct DailyDetailView: View {
                             .frame(width: 200, height: 48)
                         }
                         .buttonStyle(.glassProminent)
-                        
+
                         Button(action: {
                             let impactFeedback = UIImpactFeedbackGenerator(style: .light)
                             impactFeedback.impactOccurred()
@@ -185,20 +217,12 @@ struct DailyDetailView: View {
                         .buttonStyle(.glass)
                     } else {
                         Button(action: {
-                            // この日に追加: 入力タブへ遷移し、日付を12:00で設定
                             let impactFeedback = UIImpactFeedbackGenerator(style: .light)
                             impactFeedback.impactOccurred()
-                            
-                            // 12:00 に補正
+
                             let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: selectedDate) ?? selectedDate
-                            
-                            // ViewModelへ指示
                             viewModel.pendingInputDate = noon
-                            
-                            // 入力タブへ遷移を通知（タブ選択はContentViewのバインディング経由のため通知で指示）
                             NotificationCenter.default.post(name: .switchTab, object: nil, userInfo: ["index": 2])
-                            
-                            // 画面を閉じる
                             dismiss()
                         }) {
                             HStack(spacing: 8) {
@@ -212,7 +236,7 @@ struct DailyDetailView: View {
                             .cornerRadius(24)
                             .frame(width: 200, height: 48)
                         }
-                        
+
                         Button(action: {
                             let impactFeedback = UIImpactFeedbackGenerator(style: .light)
                             impactFeedback.impactOccurred()
@@ -246,7 +270,7 @@ struct DailyDetailView: View {
                     Image(systemName: isWeekend ? "calendar" : "calendar.badge.exclamationmark")
                         .font(.system(size: 60))
                         .foregroundColor(.gray)
-                    
+
                     if selectedCategoryFilter == -1 {
                         Text("\(shortDateFormatter.string(from: selectedDate))の支出がありません")
                             .font(.headline)
@@ -259,13 +283,234 @@ struct DailyDetailView: View {
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                     }
-                    
+
                     Text("「入力」タブから支出を追加してください")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
                 .padding()
             }
+        }
+    }
+}
+
+// MARK: - Collapsible header (DailyDetailView)
+struct DailyDetailCollapsibleHeader: View {
+    let selectedDate: Date
+    let expenseTotal: Double
+    let incomeTotal: Double
+    let netTotal: Double
+    let transactionCount: Int
+    let isWeekend: Bool
+    let selectedCategoryName: String?
+
+    let availableCategories: [(id: Int, name: String)]
+    @Binding var selectedCategoryFilter: Int
+    let viewModel: ExpenseViewModel
+
+    /// 0.0 = expanded, 1.0 = collapsed
+    let collapseProgress: CGFloat
+
+    let headerHeight: CGFloat
+    let summaryBlockHeight: CGFloat
+
+    private var dateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy年M月d日(E)"
+        formatter.locale = Locale(identifier: "ja_JP")
+        return formatter
+    }
+
+    private var dayFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d"
+        formatter.locale = Locale(identifier: "ja_JP")
+        return formatter
+    }
+
+    private var weekdayFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "E"
+        formatter.locale = Locale(identifier: "ja_JP")
+        return formatter
+    }
+
+    var body: some View {
+        let p = min(1, max(0, collapseProgress))
+
+        VStack(spacing: 12) {
+            // Top date info (always visible)
+            HStack(spacing: 12) {
+                VStack(spacing: 2) {
+                    Text(dayFormatter.string(from: selectedDate))
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                    Text(weekdayFormatter.string(from: selectedDate))
+                        .font(.caption)
+                        .foregroundColor(.white)
+                }
+                .frame(width: 60, height: 60)
+                .background(isWeekend ? Color.red : Color.blue)
+                .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(dateFormatter.string(from: selectedDate))
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.primary)
+
+                    Text("この日の支出詳細")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+
+                    if let categoryName = selectedCategoryName {
+                        Text("カテゴリ: \(categoryName)")
+                            .font(.caption)
+                            .foregroundColor(isWeekend ? .red : .blue)
+                            .fontWeight(.medium)
+                    }
+                }
+
+                Spacer()
+            }
+
+            // Collapsible summary block
+            DailyDetailSummaryBlockView(
+                expenseTotal: expenseTotal,
+                incomeTotal: incomeTotal,
+                netTotal: netTotal,
+                transactionCount: transactionCount,
+                isWeekend: isWeekend
+            )
+            .opacity(Double(1 - p))
+            .frame(height: max(0, summaryBlockHeight * (1 - p)))
+            .clipped()
+            .accessibilityHidden(p > 0.95)
+
+            // Category menu (always visible, moves up as summary collapses)
+            if !availableCategories.isEmpty {
+                CategoryFilterView(
+                    availableCategories: availableCategories,
+                    selectedCategoryFilter: $selectedCategoryFilter,
+                    viewModel: viewModel
+                )
+            }
+        }
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .top)
+        .frame(height: headerHeight, alignment: .top)
+        .background {
+            if #available(iOS 26.0, *) {
+                Color.clear
+                    .glassEffect(
+                        .regular.tint((isWeekend ? Color.red : Color.blue).opacity(0.18)).interactive(),
+                        in: .rect(cornerRadius: 16)
+                    )
+            } else {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Color.gray.opacity(0.18), lineWidth: 1)
+                    )
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+private struct DailyDetailSummaryBlockView: View {
+    let expenseTotal: Double
+    let incomeTotal: Double
+    let netTotal: Double
+    let transactionCount: Int
+    let isWeekend: Bool
+
+    var body: some View {
+        if #available(iOS 26.0, *) {
+            HStack(spacing: 0) {
+                VStack(spacing: 4) {
+                    Text("支出").font(.caption).foregroundColor(.secondary)
+                    Text("¥\(expenseTotal, specifier: "%.0f")")
+                        .font(.title3).fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+
+                Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 1, height: 40)
+
+                VStack(spacing: 4) {
+                    Text("収入").font(.caption).foregroundColor(.secondary)
+                    Text("¥\(incomeTotal, specifier: "%.0f")")
+                        .font(.title3).fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+
+                Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 1, height: 40)
+
+                VStack(spacing: 4) {
+                    Text("差額").font(.caption).foregroundColor(.secondary)
+                    Text("\(netTotal >= 0 ? "+" : "-")¥\(abs(netTotal), specifier: "%.0f")")
+                        .font(.title3).fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+
+                Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 1, height: 40)
+
+                VStack(spacing: 4) {
+                    Text("件数").font(.caption).foregroundColor(.secondary)
+                    Text("\(transactionCount)件")
+                        .font(.title3).fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .padding()
+            .glassEffect(.regular.tint(isWeekend ? .red : .blue).interactive(),
+                         in: .rect(cornerRadius: 12))
+        } else {
+            HStack(spacing: 0) {
+                VStack(spacing: 4) {
+                    Text("支出").font(.caption).foregroundColor(.secondary)
+                    Text("¥\(expenseTotal, specifier: "%.0f")")
+                        .font(.title3).fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+
+                Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 1, height: 40)
+
+                VStack(spacing: 4) {
+                    Text("収入").font(.caption).foregroundColor(.secondary)
+                    Text("¥\(incomeTotal, specifier: "%.0f")")
+                        .font(.title3).fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+
+                Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 1, height: 40)
+
+                VStack(spacing: 4) {
+                    Text("差額").font(.caption).foregroundColor(.secondary)
+                    Text("\(netTotal >= 0 ? "+" : "-")¥\(abs(netTotal), specifier: "%.0f")")
+                        .font(.title3).fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+
+                Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 1, height: 40)
+
+                VStack(spacing: 4) {
+                    Text("件数").font(.caption).foregroundColor(.secondary)
+                    Text("\(transactionCount)件")
+                        .font(.title3).fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill((isWeekend ? Color.red : Color.blue).opacity(0.1))
+                    .stroke((isWeekend ? Color.red : Color.blue).opacity(0.3), lineWidth: 1)
+            )
         }
     }
 }
