@@ -13,6 +13,7 @@ struct EditExpenseView: View {
     @State private var amount: String = ""
     @State private var date = Date()
     @State private var note: String = ""
+    @State private var transactionType: TransactionType = .expense
     @State private var selectedCategoryId: Int = 1
     @State private var showAlert = false
     @State private var alertMessage = ""
@@ -29,6 +30,15 @@ struct EditExpenseView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section(header: Text("種類")) {
+                    Picker("種類", selection: $transactionType) {
+                        Text("支出")
+                            .tag(TransactionType.expense)
+                        Text("収入")
+                            .tag(TransactionType.income)
+                    }
+                    .pickerStyle(.segmented)
+                }
                 Section(header: Text("金額")) {
                     HStack {
                         Text("¥")
@@ -38,7 +48,7 @@ struct EditExpenseView: View {
                             .font(.title2)
                             .fontWeight(.medium)
                             .focused($isAmountFocused)
-                            .onChange(of: amount) { _, newValue in
+                            .onChange(of: amount) { newValue in
                                 amount = formatAmountInput(newValue)
                             }
                         
@@ -62,18 +72,35 @@ struct EditExpenseView: View {
                 Section(header: Text("カテゴリ")) {
                     // カテゴリピッカーを独立したセクションに
                     EditCategoryPickerView(
-                        selectedCategoryId: $selectedCategoryId
+                        selectedCategoryId: $selectedCategoryId,
+                        transactionType: transactionType,
+                        categoriesByType: viewModel.getVisibleCategoriesByType(transactionType),
+                        visibleCategoryIds: Set(viewModel.getVisibleCategories().map { $0.id }),
+                        iconProvider: { id in viewModel.categoryIcon(for: id) },
+                        colorProvider: { id in viewModel.categoryColor(for: id) }
                     )
-                    .environmentObject(viewModel) // ViewModelを渡す
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
+                    .onAppear {
+                        // 初期タイプに合わせて選択を調整
+                        let visible = viewModel.getVisibleCategoriesByType(transactionType)
+                        if !visible.contains(where: { $0.id == selectedCategoryId }), let first = visible.first {
+                            selectedCategoryId = first.id
+                        }
+                    }
+                    .onChange(of: transactionType) { newType in
+                        let visible = viewModel.getVisibleCategoriesByType(newType)
+                        if !visible.contains(where: { $0.id == selectedCategoryId }) {
+                            selectedCategoryId = visible.first?.id ?? selectedCategoryId
+                        }
+                    }
                 }
                 
                 Section(header: Text("メモ（任意）")) {
                     TextField("メモを入力", text: $note, axis: .vertical)
                         .lineLimit(2...4)
                         .focused($isNoteFocused)
-                        .onChange(of: note) { _, newValue in
+                        .onChange(of: note) { newValue in
                             // メモの文字数制限（100文字）
                             if newValue.count > 100 {
                                 note = String(newValue.prefix(100))
@@ -117,7 +144,7 @@ struct EditExpenseView: View {
                     }
                 }
             }
-            .navigationTitle("支出編集")
+            .navigationTitle(transactionType == .expense ? "支出編集" : "収入編集")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
@@ -162,7 +189,7 @@ struct EditExpenseView: View {
                         hideKeyboard()
                     }
             )
-            .alert(alertType == .error ? "入力エラー" : "支出を削除", isPresented: $showAlert) {
+            .alert(alertTitle, isPresented: $showAlert) {
                 if alertType == .error {
                     Button("OK") { }
                 } else {
@@ -172,7 +199,7 @@ struct EditExpenseView: View {
                     Button("キャンセル", role: .cancel) { }
                 }
             } message: {
-                Text(alertType == .error ? alertMessage : "この支出を削除しますか？この操作は取り消せません。")
+                Text(alertBody)
             }
             .overlay {
                 if isUpdating {
@@ -194,10 +221,24 @@ struct EditExpenseView: View {
     private var isButtonEnabled: Bool {
         let hasAmount = !amount.isEmpty
         let isValidAmountValue = isValidAmount(amount)
-        let hasVisibleCategories = !viewModel.getVisibleCategories().isEmpty
+        let hasVisibleCategories = !viewModel.getVisibleCategoriesByType(transactionType).isEmpty
         let notUpdating = !isUpdating
         
         return hasAmount && isValidAmountValue && hasVisibleCategories && notUpdating
+    }
+    
+    private var alertTitle: String {
+        alertType == .error
+            ? "入力エラー"
+            : (transactionType == .expense ? "支出を削除" : "収入を削除")
+    }
+    
+    private var alertBody: String {
+        alertType == .error
+            ? alertMessage
+            : (transactionType == .expense
+               ? "この支出を削除しますか？この操作は取り消せません。"
+               : "この収入を削除しますか？この操作は取り消せません。")
     }
     
     // MARK: - 数値入力フォーマット関数
@@ -254,7 +295,14 @@ struct EditExpenseView: View {
             }
             date = expense.date
             note = expense.note
+            transactionType = expense.type
             selectedCategoryId = expense.categoryId
+            
+            let visibleTyped = viewModel.getVisibleCategoriesByType(transactionType)
+            if !visibleTyped.contains(where: { $0.id == selectedCategoryId }) {
+                selectedCategoryId = visibleTyped.first?.id ?? selectedCategoryId
+            }
+            
             print("データ読み込み完了: ID=\(expenseId), CategoryID=\(selectedCategoryId)")
             
             // 選択されたカテゴリが可視カテゴリにあるかチェック
@@ -328,6 +376,7 @@ struct EditExpenseView: View {
         let updatedExpense = Expense(
             id: expenseId,
             amount: parsedAmount,
+            type: transactionType,
             date: date,
             note: note.trimmingCharacters(in: .whitespacesAndNewlines),
             categoryId: selectedCategoryId,
@@ -353,15 +402,14 @@ struct EditExpenseView: View {
 // 編集用カテゴリピッカー（更新版）
 struct EditCategoryPickerView: View {
     @Binding var selectedCategoryId: Int
-    @EnvironmentObject var viewModel: ExpenseViewModel
+    let transactionType: TransactionType
+    let categoriesByType: [(id: Int, name: String)]
+    let visibleCategoryIds: Set<Int>
+    let iconProvider: (Int) -> String
+    let colorProvider: (Int) -> String
     
-    // 表示するカテゴリ（編集時は全カテゴリを表示、ただし非表示は薄く表示）
     private var displayCategories: [(id: Int, name: String)] {
-        return viewModel.categories
-    }
-    
-    private var visibleCategoryIds: Set<Int> {
-        return Set(viewModel.getVisibleCategories().map { $0.id })
+        categoriesByType
     }
     
     var body: some View {
@@ -385,6 +433,9 @@ struct EditCategoryPickerView: View {
                 .background(
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color.orange.opacity(0.1))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
                         .stroke(Color.orange.opacity(0.3), lineWidth: 1)
                 )
             }
@@ -396,6 +447,8 @@ struct EditCategoryPickerView: View {
                         category: category,
                         isSelected: selectedCategoryId == category.id,
                         isVisible: visibleCategoryIds.contains(category.id),
+                        iconProvider: iconProvider,
+                        colorProvider: colorProvider,
                         action: {
                             selectedCategoryId = category.id
                             
@@ -404,30 +457,8 @@ struct EditCategoryPickerView: View {
                             impactFeedback.impactOccurred()
                         }
                     )
-                    .environmentObject(viewModel) // ViewModelを渡す
                 }
             }
-            
-//            // 現在選択されているカテゴリを表示
-//            if let currentCategory = displayCategories.first(where: { $0.id == selectedCategoryId }) {
-//                HStack {
-//                    Image(systemName: "tag.fill")
-//                        .foregroundColor(.orange)
-//                        .font(.caption)
-//                    Text("選択中: \(currentCategory.name)")
-//                        .font(.caption)
-//                        .foregroundColor(.secondary)
-//                    
-//                    if !visibleCategoryIds.contains(selectedCategoryId) {
-//                        Text("(非表示)")
-//                            .font(.caption)
-//                            .foregroundColor(.orange)
-//                            .italic()
-//                    }
-//                }
-//                .padding(.top, 8)
-//                .animation(.easeInOut(duration: 0.2), value: selectedCategoryId)
-//            }
         }
         .padding()
     }
@@ -438,17 +469,18 @@ struct EditCategoryButtonView: View {
     let category: (id: Int, name: String)
     let isSelected: Bool
     let isVisible: Bool
+    let iconProvider: (Int) -> String
+    let colorProvider: (Int) -> String
     let action: () -> Void
-    @EnvironmentObject var viewModel: ExpenseViewModel
     
     // データベースから動的にアイコンを取得
     private var categoryIcon: String {
-        return viewModel.categoryIcon(for: category.id)
+        iconProvider(category.id)
     }
     
     // データベースから動的に色を取得
     private var categoryColor: Color {
-        let colorString = viewModel.categoryColor(for: category.id)
+        let colorString = colorProvider(category.id)
         return colorFromString(colorString)
     }
     
@@ -463,6 +495,13 @@ struct EditCategoryButtonView: View {
         case "pink": return .pink
         default: return .gray
         }
+    }
+    
+    private var strokeColor: Color {
+        isSelected ? categoryColor : (isVisible ? Color.gray.opacity(0.3) : Color.orange.opacity(0.4))
+    }
+    private var fillColor: Color {
+        isSelected ? categoryColor.opacity(0.1) : Color.gray.opacity(0.05)
     }
     
     var body: some View {
@@ -494,12 +533,11 @@ struct EditCategoryButtonView: View {
             .frame(height: 80)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? categoryColor.opacity(0.1) : Color.gray.opacity(0.05))
-                    .stroke(
-                        isSelected ? categoryColor :
-                        (isVisible ? Color.gray.opacity(0.3) : Color.orange.opacity(0.4)),
-                        lineWidth: isSelected ? 2 : 1
-                    )
+                    .fill(fillColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(strokeColor, lineWidth: isSelected ? 2 : 1)
             )
             .opacity(isVisible ? 1.0 : 0.7) // 非表示カテゴリ全体を薄く表示
         }
@@ -516,6 +554,22 @@ struct EditButtonsView: View {
     let updateAction: () -> Void
     let deleteAction: () -> Void
     let cancelAction: () -> Void
+    
+    private var primaryButtonBackground: LinearGradient {
+        if isButtonEnabled {
+            return LinearGradient(
+                gradient: Gradient(colors: [Color.blue, Color.blue.opacity(0.8)]),
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        } else {
+            return LinearGradient(
+                gradient: Gradient(colors: [Color.gray.opacity(0.6), Color.gray.opacity(0.4)]),
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        }
+    }
     
     var body: some View {
         VStack(spacing: 12) {
@@ -536,19 +590,7 @@ struct EditButtonsView: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 50)
-                .background(
-                    isButtonEnabled ?
-                    LinearGradient(
-                        gradient: Gradient(colors: [Color.blue, Color.blue.opacity(0.8)]),
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    ) :
-                    LinearGradient(
-                        gradient: Gradient(colors: [Color.gray.opacity(0.6), Color.gray.opacity(0.4)]),
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
+                .background(primaryButtonBackground)
                 .cornerRadius(12)
                 .shadow(color: isButtonEnabled ? Color.blue.opacity(0.3) : Color.clear, radius: 4, x: 0, y: 2)
             }
@@ -614,3 +656,4 @@ struct EditExpenseView_Previews: PreviewProvider {
         }
     }
 }
+

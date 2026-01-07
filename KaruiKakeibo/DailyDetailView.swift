@@ -5,6 +5,8 @@
 
 import SwiftUI
 
+// NOTE: カテゴリは支出/収入で別管理されることを想定。ViewModel 側の typed API に対応。
+
 struct DailyDetailView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
     @Environment(\.dismiss) private var dismiss
@@ -16,10 +18,16 @@ struct DailyDetailView: View {
         let dailyExpenses = viewModel.expenses.filter { expense in
             calendar.isDate(expense.date, inSameDayAs: selectedDate)
         }
-        
-        // この日に支出があるカテゴリのみを取得
-        let categoryIds = Set(dailyExpenses.map { $0.categoryId })
-        return viewModel.categories.filter { categoryIds.contains($0.id) }.sorted { $0.name < $1.name }
+        // その日のタイプ（支出/収入）を推定
+        let activeType: TransactionType = {
+            if let first = filteredExpenses.first { return first.type }
+            if let any = dailyExpenses.first { return any.type }
+            return .expense
+        }()
+        // タイプ別カテゴリ（当日使われたカテゴリのみ）
+        let idsOfType = Set(dailyExpenses.filter { $0.type == activeType }.map { $0.categoryId })
+        let typedCategories = viewModel.categoriesByType(activeType)
+        return typedCategories.filter { idsOfType.contains($0.id) }.sorted { $0.name < $1.name }
     }
     
     private var filteredExpenses: [Expense] {
@@ -27,16 +35,35 @@ struct DailyDetailView: View {
         let dailyExpenses = viewModel.expenses.filter { expense in
             calendar.isDate(expense.date, inSameDayAs: selectedDate)
         }
-        
+        // 選択カテゴリからタイプを優先推定
+        let activeType: TransactionType = {
+            if selectedCategoryFilter != -1 {
+                return viewModel.categoryType(for: selectedCategoryFilter)
+            }
+            return dailyExpenses.first?.type ?? .expense
+        }()
+        let typed = dailyExpenses.filter { $0.type == activeType }
         if selectedCategoryFilter == -1 {
-            return dailyExpenses.sorted { $0.date > $1.date }
+            return typed.sorted { $0.date > $1.date }
         } else {
-            return dailyExpenses.filter { $0.categoryId == selectedCategoryFilter }.sorted { $0.date > $1.date }
+            return typed.filter { $0.categoryId == selectedCategoryFilter }.sorted { $0.date > $1.date }
         }
     }
     
-    private var totalAmount: Double {
-        filteredExpenses.reduce(0) { $0 + $1.amount }
+    private var expenseTotal: Double {
+        filteredExpenses
+            .filter { $0.type == .expense }
+            .reduce(0) { $0 + $1.amount }
+    }
+    
+    private var incomeTotal: Double {
+        filteredExpenses
+            .filter { $0.type == .income }
+            .reduce(0) { $0 + $1.amount }
+    }
+    
+    private var netTotal: Double {
+        incomeTotal - expenseTotal
     }
     
     private var dateFormatter: DateFormatter {
@@ -65,8 +92,10 @@ struct DailyDetailView: View {
                 // ヘッダー情報
                 DailyDetailHeaderView(
                     selectedDate: selectedDate,
-                    totalAmount: totalAmount,
-                    expenseCount: filteredExpenses.count,
+                    expenseTotal: expenseTotal,
+                    incomeTotal: incomeTotal,
+                    netTotal: netTotal,
+                    transactionCount: filteredExpenses.count,
                     isWeekend: isWeekend,
                     selectedCategoryName: selectedCategoryFilter == -1 ? nil : availableCategories.first(where: { $0.id == selectedCategoryFilter })?.name
                 )
@@ -193,7 +222,7 @@ struct DailyDetailView: View {
         .navigationTitle("\(shortDateFormatter.string(from: selectedDate))の支出")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
-            viewModel.fetchExpenses()
+            viewModel.refreshAllData()
         }
         .overlay {
             if filteredExpenses.isEmpty {
@@ -227,8 +256,10 @@ struct DailyDetailView: View {
 
 struct DailyDetailHeaderView: View {
     let selectedDate: Date
-    let totalAmount: Double
-    let expenseCount: Int
+    let expenseTotal: Double
+    let incomeTotal: Double
+    let netTotal: Double
+    let transactionCount: Int
     let isWeekend: Bool
     let selectedCategoryName: String?
     
@@ -293,47 +324,61 @@ struct DailyDetailHeaderView: View {
             
             if #available(iOS 26.0, *) {
                 HStack(spacing: 0) {
-                    // 合計金額
+                    // 支出
                     VStack(spacing: 4) {
-                        Text("合計金額")
+                        Text("支出")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        Text("¥\(totalAmount, specifier: "%.0f")")
-                            .font(.title2)
+                        Text("¥\(expenseTotal, specifier: "%.0f")")
+                            .font(.title3)
                             .fontWeight(.semibold)
                             .foregroundColor(.primary)
                     }
                     .frame(maxWidth: .infinity)
-                    
-                    // 区切り線
+
                     Rectangle()
                         .fill(Color.gray.opacity(0.3))
                         .frame(width: 1, height: 40)
-                    
-                    // 支出回数
+
+                    // 収入
                     VStack(spacing: 4) {
-                        Text("支出回数")
+                        Text("収入")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        Text("\(expenseCount)回")
-                            .font(.title2)
+                        Text("¥\(incomeTotal, specifier: "%.0f")")
+                            .font(.title3)
                             .fontWeight(.semibold)
                             .foregroundColor(.primary)
                     }
                     .frame(maxWidth: .infinity)
-                    
-                    // 区切り線
+
                     Rectangle()
                         .fill(Color.gray.opacity(0.3))
                         .frame(width: 1, height: 40)
-                    
-                    // 平均金額
+
+                    // 差額
                     VStack(spacing: 4) {
-                        Text("平均金額")
+                        Text("差額")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        Text("¥\(expenseCount > 0 ? totalAmount / Double(expenseCount) : 0, specifier: "%.0f")")
-                            .font(.title2)
+                        Text("\(netTotal >= 0 ? "+" : "-")¥\(abs(netTotal), specifier: "%.0f")")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 1, height: 40)
+
+                    // 件数
+                    VStack(spacing: 4) {
+                        Text("件数")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(transactionCount)件")
+                            .font(.title3)
                             .fontWeight(.semibold)
                             .foregroundColor(.primary)
                     }
@@ -343,47 +388,61 @@ struct DailyDetailHeaderView: View {
                 .glassEffect(.regular.tint(isWeekend ? .red : .blue).interactive(), in: .rect(cornerRadius: 12))
             } else {
                 HStack(spacing: 0) {
-                    // 合計金額
+                    // 支出
                     VStack(spacing: 4) {
-                        Text("合計金額")
+                        Text("支出")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        Text("¥\(totalAmount, specifier: "%.0f")")
-                            .font(.title2)
+                        Text("¥\(expenseTotal, specifier: "%.0f")")
+                            .font(.title3)
                             .fontWeight(.semibold)
                             .foregroundColor(.primary)
                     }
                     .frame(maxWidth: .infinity)
-                    
-                    // 区切り線
+
                     Rectangle()
                         .fill(Color.gray.opacity(0.3))
                         .frame(width: 1, height: 40)
-                    
-                    // 支出回数
+
+                    // 収入
                     VStack(spacing: 4) {
-                        Text("支出回数")
+                        Text("収入")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        Text("\(expenseCount)回")
-                            .font(.title2)
+                        Text("¥\(incomeTotal, specifier: "%.0f")")
+                            .font(.title3)
                             .fontWeight(.semibold)
                             .foregroundColor(.primary)
                     }
                     .frame(maxWidth: .infinity)
-                    
-                    // 区切り線
+
                     Rectangle()
                         .fill(Color.gray.opacity(0.3))
                         .frame(width: 1, height: 40)
-                    
-                    // 平均金額
+
+                    // 差額
                     VStack(spacing: 4) {
-                        Text("平均金額")
+                        Text("差額")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        Text("¥\(expenseCount > 0 ? totalAmount / Double(expenseCount) : 0, specifier: "%.0f")")
-                            .font(.title2)
+                        Text("\(netTotal >= 0 ? "+" : "-")¥\(abs(netTotal), specifier: "%.0f")")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 1, height: 40)
+
+                    // 件数
+                    VStack(spacing: 4) {
+                        Text("件数")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(transactionCount)件")
+                            .font(.title3)
                             .fontWeight(.semibold)
                             .foregroundColor(.primary)
                     }
@@ -516,7 +575,7 @@ struct DailyDetailRowView: View {
     }
     
     private var categoryName: String {
-        categories.first(where: { $0.id == expense.categoryId })?.name ?? "不明"
+        viewModel.categoryNameTyped(for: expense.categoryId)
     }
     
     private var categoryIcon: String {

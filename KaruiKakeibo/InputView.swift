@@ -13,6 +13,7 @@ struct InputView: View {
     @State private var amount: String = ""
     @State private var date = Date()
     @State private var note: String = ""
+    @State private var transactionType: TransactionType = .expense
     @State private var selectedCategoryId: Int = 1
     @State private var showAlert = false
     @State private var alertMessage = ""
@@ -20,6 +21,7 @@ struct InputView: View {
     @State private var isProcessing = false
     @State private var keyboardHeight: CGFloat = 0
     @State private var showFloatingButton: Bool = true
+    @State private var showingClearConfirm = false
     @FocusState private var isAmountFocused: Bool
     @FocusState private var isNoteFocused: Bool
     
@@ -39,7 +41,7 @@ struct InputView: View {
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
-                    Text("支出を保存しました")
+                    Text(transactionType == .expense ? "支出を保存しました" : "収入を保存しました")
                         .foregroundColor(.white)
                 }
                 .padding()
@@ -57,6 +59,15 @@ struct InputView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section(header: Text("種類")) {
+                    Picker("種類", selection: $transactionType) {
+                        Text("支出")
+                            .tag(TransactionType.expense)
+                        Text("収入")
+                            .tag(TransactionType.income)
+                    }
+                    .pickerStyle(.segmented)
+                }
                 Section(header: Text("金額")) {
                     HStack {
                         Text("¥")
@@ -133,10 +144,34 @@ struct InputView: View {
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 }
                 
-                Section(header: Text("カテゴリ")) {
+                Section(header:
+                    HStack {
+                        Text("カテゴリ")
+                        Spacer()
+                        NavigationLink {
+                            CategoryManagementView()
+                                .environmentObject(viewModel)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "pencil")
+                                Text("編集")
+                            }
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule().fill(Color.blue.opacity(0.1))
+                            )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .accessibilityLabel("カテゴリを編集")
+                    }
+                ) {
                     // カテゴリピッカーを独立したセクションに
                     CategoryPickerView(
-                        selectedCategoryId: $selectedCategoryId
+                        selectedCategoryId: $selectedCategoryId,
+                        transactionType: transactionType
                     )
                     .environmentObject(viewModel) // ViewModelを渡す
                     .listRowBackground(Color.clear)
@@ -199,11 +234,11 @@ struct InputView: View {
                 }
             }
             .scrollDismissesKeyboard(.immediately)
-            .navigationTitle("支出入力")
+            .navigationTitle(transactionType == .expense ? "支出入力" : "収入入力")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("クリア") {
-                        clearFields()
+                        showingClearConfirm = true
                     }
                     .foregroundColor(.orange)
                     .disabled(isProcessing)
@@ -233,6 +268,14 @@ struct InputView: View {
                     message: Text(alertMessage),
                     dismissButton: .default(Text("OK"))
                 )
+            }
+            .alert("入力内容をクリア", isPresented: $showingClearConfirm) {
+                Button("クリア", role: .destructive) {
+                    clearFields()
+                }
+                Button("キャンセル", role: .cancel) { }
+            } message: {
+                Text("現在の入力内容をすべてクリアしますか？")
             }
             .overlay(
                 successOverlay
@@ -307,6 +350,12 @@ struct InputView: View {
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
                     showFloatingButton = true
+                }
+            }
+            .onChange(of: transactionType) { oldType, newType in
+                let visible = viewModel.getVisibleCategoriesByType(newType)
+                if !visible.contains(where: { $0.id == selectedCategoryId }) {
+                    selectedCategoryId = visible.first?.id ?? selectedCategoryId
                 }
             }
         }
@@ -504,7 +553,7 @@ struct InputView: View {
     
     private func setupInitialCategory() {
         // 可視カテゴリの最初のものを選択
-        let visibleCategories = viewModel.getVisibleCategories()
+        let visibleCategories = viewModel.getVisibleCategoriesByType(transactionType)
         if selectedCategoryId == 1 && !visibleCategories.isEmpty {
             selectedCategoryId = visibleCategories.first?.id ?? 1
         }
@@ -585,6 +634,7 @@ struct InputView: View {
         let expense = Expense(
             id: 0,
             amount: parsedAmount,
+            type: transactionType,
             date: date,
             note: note.trimmingCharacters(in: .whitespacesAndNewlines),
             categoryId: selectedCategoryId,
@@ -633,7 +683,7 @@ struct InputView: View {
         date = Date()
         
         // 可視カテゴリの最初のものを再選択
-        let visibleCategories = viewModel.getVisibleCategories()
+        let visibleCategories = viewModel.getVisibleCategoriesByType(transactionType)
         if let first = visibleCategories.first {
             selectedCategoryId = first.id
         }
@@ -765,10 +815,11 @@ struct CategoryInfo: Identifiable, Equatable {
 struct CategoryPickerView: View {
     @Binding var selectedCategoryId: Int
     @EnvironmentObject var viewModel: ExpenseViewModel
+    let transactionType: TransactionType
     
     // 表示するカテゴリを可視カテゴリに限定（Equatable対応）
     private var displayCategories: [CategoryInfo] {
-        return viewModel.getVisibleCategories().map { CategoryInfo(id: $0.id, name: $0.name) }
+        return viewModel.getVisibleCategoriesByType(transactionType).map { CategoryInfo(id: $0.id, name: $0.name) }
     }
     
     var body: some View {

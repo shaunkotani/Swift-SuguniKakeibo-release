@@ -180,7 +180,8 @@ struct CategoryManagementView: View {
                 color: dbCategory.color,
                 isDefault: dbCategory.isDefault,
                 isVisible: dbCategory.isVisible,
-                sortOrder: dbCategory.sortOrder
+                sortOrder: dbCategory.sortOrder,
+                type: dbCategory.type
             )
         }.sorted { $0.sortOrder < $1.sortOrder }
         
@@ -214,7 +215,9 @@ struct CategoryManagementView: View {
                 isDefault: categories[index].isDefault,
                 isVisible: categories[index].isVisible,
                 isActive: true,
-                sortOrder: categories[index].sortOrder
+                sortOrder: categories[index].sortOrder,
+                createdAt: "",
+                type: categories[index].type
             )
             
             viewModel.updateCategory(updatedFullCategory)
@@ -241,7 +244,9 @@ struct CategoryManagementView: View {
                 isDefault: category.isDefault,
                 isVisible: category.isVisible,
                 isActive: true,
-                sortOrder: category.sortOrder
+                sortOrder: category.sortOrder,
+                createdAt: "",
+                type: category.type
             )
         }
         
@@ -260,7 +265,9 @@ struct CategoryManagementView: View {
             isDefault: false,
             isVisible: true,
             isActive: true,
-            sortOrder: newCategory.sortOrder
+            sortOrder: newCategory.sortOrder,
+            createdAt: "",
+            type: newCategory.type
         )
         
         viewModel.addCategory(fullCategory)
@@ -285,7 +292,9 @@ struct CategoryManagementView: View {
                 isDefault: category.isDefault,
                 isVisible: category.isVisible,
                 isActive: true,
-                sortOrder: category.sortOrder
+                sortOrder: category.sortOrder,
+                createdAt: "",
+                type: category.type
             )
             
             viewModel.updateCategory(updatedFullCategory)
@@ -357,6 +366,19 @@ struct CategoryManagementRowView: View {
                 Text(category.isVisible ? "表示中" : "非表示")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                
+                HStack(spacing: 6) {
+                    Text(category.type == .expense ? "支出" : "収入")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(category.type == .expense ? Color.red.opacity(0.15) : Color.green.opacity(0.15))
+                        )
+                        .foregroundColor(category.type == .expense ? .red : .green)
+                }
             }
             
             Spacer()
@@ -416,6 +438,7 @@ struct CategoryEditView: View {
     @State private var name: String = ""
     @State private var selectedIcon: String = "tag.fill"
     @State private var selectedColor: String = "gray"
+    @State private var selectedType: TransactionType = .expense
     @State private var showAlert = false
     @State private var alertMessage = ""
     
@@ -444,6 +467,17 @@ struct CategoryEditView: View {
                 Section(header: Text("カテゴリ名")) {
                     TextField("カテゴリ名を入力", text: $name)
                         .textFieldStyle(.roundedBorder)
+                }
+                
+                Section(header: Text("種類")) {
+                    Picker("種類", selection: Binding(
+                        get: { selectedType },
+                        set: { selectedType = $0 }
+                    )) {
+                        Text("支出").tag(TransactionType.expense)
+                        Text("収入").tag(TransactionType.income)
+                    }
+                    .pickerStyle(.segmented)
                 }
                 
                 Section(header: Text("アイコン")) {
@@ -542,6 +576,7 @@ struct CategoryEditView: View {
                     name = existingCategory.name
                     selectedIcon = existingCategory.icon
                     selectedColor = existingCategory.color
+                    selectedType = viewModel.fullCategories.first(where: { $0.id == existingCategory.id })?.type ?? .expense
                 }
             }
             .alert("入力エラー", isPresented: $showAlert) {
@@ -580,7 +615,8 @@ struct CategoryEditView: View {
             color: selectedColor,
             isDefault: category?.isDefault ?? false,
             isVisible: category?.isVisible ?? true,
-            sortOrder: category?.sortOrder ?? 0
+            sortOrder: category?.sortOrder ?? 0,
+            type: selectedType
         )
         
         onSave(editableCategory)
@@ -610,8 +646,9 @@ struct EditableCategory: Identifiable {
     var isDefault: Bool
     var isVisible: Bool
     var sortOrder: Int
+    var type: TransactionType
     
-    init(id: Int = 0, name: String, icon: String, color: String, isDefault: Bool = false, isVisible: Bool = true, sortOrder: Int = 0) {
+    init(id: Int = 0, name: String, icon: String, color: String, isDefault: Bool = false, isVisible: Bool = true, isActive: Bool = true, sortOrder: Int = 0, type: TransactionType = .expense) {
         self.id = id
         self.name = name
         self.icon = icon
@@ -619,6 +656,7 @@ struct EditableCategory: Identifiable {
         self.isDefault = isDefault
         self.isVisible = isVisible
         self.sortOrder = sortOrder
+        self.type = type
     }
 }
 
@@ -628,3 +666,4 @@ struct CategoryManagementView_Previews: PreviewProvider {
             .environmentObject(ExpenseViewModel())
     }
 }
+
