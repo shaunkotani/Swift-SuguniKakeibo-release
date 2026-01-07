@@ -377,6 +377,8 @@ struct CollapsibleSummaryHeader: View {
 
 struct CategorySummaryView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
+    @Environment(\.dismiss) private var dismiss
+
     @Binding var selectedTab: Int
     @Binding var shouldFocusAmount: Bool
     
@@ -522,6 +524,11 @@ struct CategorySummaryView: View {
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .animation(.easeInOut(duration: 0.3), value: selectedMonthIndex)
             }
+            .overlay(alignment: .leading) {
+                EdgeBackSwipeArea {
+                    dismiss()
+                }
+            }
         }
         .onAppear {
             // 選択中月の集計計算
@@ -607,6 +614,30 @@ struct CategorySummaryView: View {
         impactFeedback.impactOccurred()
         
         print("📊 カテゴリサマリービューから入力画面へ遷移")
+    }
+    
+    // 左端スワイプで戻る（TabViewのページングが戻るジェスチャを奪う対策）
+    private struct EdgeBackSwipeArea: View {
+        var onBack: () -> Void
+
+        // 戻るジェスチャの感覚に寄せる
+        private let edgeWidth: CGFloat = 24
+        private let triggerDistance: CGFloat = 80
+
+        var body: some View {
+            Color.clear
+                .frame(width: edgeWidth)
+                .contentShape(Rectangle())
+                .highPriorityGesture(
+                    DragGesture(minimumDistance: 10)
+                        .onEnded { value in
+                            // 左端領域内で開始し、右方向に一定距離ドラッグしたら戻る
+                            guard value.startLocation.x <= edgeWidth else { return }
+                            guard value.translation.width >= triggerDistance else { return }
+                            onBack()
+                        }
+                )
+        }
     }
 }
 
