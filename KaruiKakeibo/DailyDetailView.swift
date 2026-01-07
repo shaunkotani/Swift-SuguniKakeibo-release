@@ -221,9 +221,6 @@ struct DailyDetailView: View {
         }
         .navigationTitle("\(shortDateFormatter.string(from: selectedDate))の支出")
         .navigationBarTitleDisplayMode(.inline)
-        .refreshable {
-            viewModel.refreshAllData()
-        }
         .overlay {
             if filteredExpenses.isEmpty {
                 VStack(spacing: 16) {
