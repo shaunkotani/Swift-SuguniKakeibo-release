@@ -28,7 +28,13 @@ struct AnalysisView: View {
     }()
     @State private var windowLength: Int = 12
     @State private var zoomScale: CGFloat = 1.0
+
+    private let zoomMin: CGFloat = 0.25
+    private let zoomMax: CGFloat = 3.0
+    private let zoomStep: CGFloat = 0.25
+
     @State private var hasAutoScrolledToEnd: Bool = false
+    
     @State private var selectedMonth: Date? = nil
 
     private var seriesData: [MonthlySeriesPoint] {
@@ -288,7 +294,7 @@ private extension AnalysisView {
                                     MagnificationGesture()
                                         .onChanged { value in
                                             // ズーム倍率を1.0〜3.0にクランプ
-                                            let clamped = min(max(1.0, value), 3.0)
+                                            let clamped = min(max(zoomMin, value), zoomMax)
                                             zoomScale = clamped
                                         }
                                         .onEnded { _ in
@@ -317,9 +323,40 @@ private extension AnalysisView {
         } label: {
             HStack {
                 Image(systemName: "chart.line.uptrend.xyaxis")
-                Text("月間推移（直近ウィンドウ）")
+                Text("月間推移")
                     .font(.headline)
+
                 Spacer()
+
+                HStack(spacing: 8) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            zoomScale = max(zoomMin, zoomScale - zoomStep)
+                        }
+                    } label: {
+                        Image(systemName: "minus")
+                            .font(.subheadline)
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(zoomScale <= zoomMin)
+                    .accessibilityLabel("縮小")
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            zoomScale = min(zoomMax, zoomScale + zoomStep)
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.subheadline)
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(zoomScale >= zoomMax)
+                    .accessibilityLabel("拡大")
+                }
             }
         }
     }
