@@ -403,10 +403,6 @@ struct MemoView: View {
                                         quickEditingListId = list.id
                                         quickEditingListName = list.name
                                         showQuickEditListAlert = true
-                                    },
-                                    onDelete: {
-                                        quickDeleteListId = list.id
-                                        showQuickDeleteListDialog = true
                                     }
                                 )
                             }
@@ -588,12 +584,19 @@ struct MemoView: View {
                 addTodoTitle = ""
             }
         }
-        .alert("リスト名を変更", isPresented: $showQuickEditListAlert) {
+        .alert("リスト名を変更（空欄で削除）", isPresented: $showQuickEditListAlert) {
             TextField("リスト名", text: $quickEditingListName)
             Button("保存") {
                 if let id = quickEditingListId {
-                    store.renameList(id, to: quickEditingListName)
-                    selectedListId = id
+                    let trimmed = quickEditingListName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.isEmpty {
+                        // 空欄で確定 → 削除確認へ
+                        quickDeleteListId = id
+                        showQuickDeleteListDialog = true
+                    } else {
+                        store.renameList(id, to: trimmed)
+                        selectedListId = id
+                    }
                 }
                 quickEditingListId = nil
                 quickEditingListName = ""
@@ -801,8 +804,17 @@ private struct ManageTodoListsView: View {
                 TextField("リスト名", text: $editingListName)
                 Button("保存") {
                     if let id = editingListId {
-                        store.renameList(id, to: editingListName)
-                        selectedListId = id
+                        let trimmed = editingListName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if trimmed.isEmpty {
+                            // 空欄で確定 → 削除確認へ
+                            if let list = store.todoLists.first(where: { $0.id == id }) {
+                                deleteListCandidate = list
+                                showDeleteListDialog = true
+                            }
+                        } else {
+                            store.renameList(id, to: trimmed)
+                            selectedListId = id
+                        }
                     }
                     editingListId = nil
                     editingListName = ""
@@ -840,7 +852,6 @@ private struct MemoTodoListTab: View {
     let isSelected: Bool
     let onSelect: () -> Void
     let onRename: () -> Void
-    let onDelete: () -> Void
 
     var body: some View {
         let bg = isSelected ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12)
@@ -861,12 +872,6 @@ private struct MemoTodoListTab: View {
                     onRename()
                 } label: {
                     Label("名前変更", systemImage: "pencil")
-                }
-
-                Button(role: .destructive) {
-                    onDelete()
-                } label: {
-                    Label("削除", systemImage: "trash")
                 }
             }
     }
