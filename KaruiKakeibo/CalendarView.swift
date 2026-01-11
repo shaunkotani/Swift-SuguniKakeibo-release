@@ -24,6 +24,7 @@ struct CalendarView: View {
     @State private var dateListForSheet: [Date] = []
     @State private var selectedDateIndex: Int = 0
     @State private var showingDetailSheet: Bool = false
+    @State private var showingSettingSheet: Bool = false
 
     // パフォーマンス最適化用のキャッシュ
     @State private var cachedMonthlyExpenses: [Expense] = []
@@ -151,6 +152,18 @@ struct CalendarView: View {
                 calculateDailyTotalsSync()
             }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showingSettingSheet = true
+                    }) {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("設定")
+                    .accessibilityHint("設定画面を開きます")
+                    .disabled(showingDetailSheet)
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: {
                         scrollToToday()
@@ -160,7 +173,7 @@ struct CalendarView: View {
                     .accessibilityLabel("今月")
                     .accessibilityHint("今月に移動します")
                     .disabled(showingDetailSheet)
-                    
+
                     Menu {
                         Button(action: {
                             useCumulativeMode = false
@@ -184,6 +197,10 @@ struct CalendarView: View {
             // シート表示
             .sheet(isPresented: $showingDetailSheet) {
                 DatePagingSheet(dates: $dateListForSheet, selectedIndex: $selectedDateIndex)
+                    .environmentObject(viewModel)
+            }
+            .sheet(isPresented: $showingSettingSheet) {
+                SettingView()
                     .environmentObject(viewModel)
             }
             .alert("データ読み込み中です。しばらくしてから再度お試しください", isPresented: $showDataLoadingAlert) {
