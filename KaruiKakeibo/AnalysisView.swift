@@ -65,7 +65,7 @@ struct AnalysisView: View {
                 .padding()
             }
             .navigationTitle("分析")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.automatic)
         }
     }
 }
