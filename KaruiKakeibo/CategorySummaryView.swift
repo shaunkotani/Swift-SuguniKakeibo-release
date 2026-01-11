@@ -609,7 +609,7 @@ struct CategorySummaryView: View {
                 .disabled(isRefreshing)
             }
         }
-        .navigationTitle("カテゴリ別集計")
+        .navigationTitle("月別カテゴリ集計")
         .navigationBarTitleDisplayMode(.automatic)
     }
     

@@ -16,6 +16,25 @@ struct MonthlySeriesPoint: Identifiable {
     let series: String // "支出" / "収入" / "合計"
 }
 
+// MARK: - Category trend models (for spending analysis)
+private struct CategoryAmountRow: Identifiable {
+    let id = UUID()
+    let category: String
+    let amount: Double
+}
+
+private struct CategoryTrendRow: Identifiable {
+    let id = UUID()
+    let category: String
+    let recentAmount: Double
+    let previousAmount: Double
+    var delta: Double { recentAmount - previousAmount }
+    var percentChange: Double? {
+        guard previousAmount > 0 else { return nil }
+        return (recentAmount - previousAmount) / previousAmount
+    }
+}
+
 // Track x positions of month anchors inside the horizontal ScrollView viewport
 private struct MonthMidXPreferenceKey: PreferenceKey {
     static var defaultValue: [Date: CGFloat] = [:]
@@ -60,11 +79,12 @@ struct AnalysisView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     headerControls
                     chartSection
+                    spendingTrendsSection
                     navigationLinksSection
                 }
                 .padding()
             }
-            .navigationTitle("分析")
+            .navigationTitle("家計簿の分析")
             .navigationBarTitleDisplayMode(.automatic)
         }
     }
@@ -468,6 +488,189 @@ private extension AnalysisView {
     }
 }
 
+// MARK: - Spending Trends Section
+private extension AnalysisView {
+    var spendingTrendsSection: some View {
+        // Precompute all data outside of ViewBuilder to avoid control-flow inside result builders
+        let cal = Calendar.current
+        let currentMonthStart = startOfMonth(Date())
+        let windowMonths = 3
+
+        // Recent window: [currentMonth, -1, -2]
+        let recentMonths: [Date] = (0..<windowMonths)
+            .compactMap { cal.date(byAdding: .month, value: -$0, to: currentMonthStart) }
+            .map(startOfMonth)
+
+        // Previous window: [-3, -4, -5]
+        let previousMonths: [Date] = (windowMonths..<(windowMonths * 2))
+            .compactMap { cal.date(byAdding: .month, value: -$0, to: currentMonthStart) }
+            .map(startOfMonth)
+
+        let recentSet = Set(recentMonths)
+        let previousSet = Set(previousMonths)
+
+        // Aggregate totals imperatively before building the view
+        var recentTotals: [String: Double] = [:]
+        var previousTotals: [String: Double] = [:]
+        for e in viewModel.expenses {
+            // 支出のみ対象（収入は除外）
+            if e.type != .expense { continue }
+            let m = startOfMonth(e.date)
+            // 未来データは除外
+            if m > currentMonthStart { continue }
+            let category = categoryName(of: e)
+            if recentSet.contains(m) {
+                recentTotals[category, default: 0] += e.amount
+            } else if previousSet.contains(m) {
+                previousTotals[category, default: 0] += e.amount
+            }
+        }
+
+        let recentSum = recentTotals.values.reduce(0, +)
+        let recentAvg = recentSum / Double(max(1, windowMonths))
+
+        let topCategories: [CategoryAmountRow] = recentTotals
+            .map { CategoryAmountRow(category: $0.key, amount: $0.value) }
+            .sorted(by: { $0.amount > $1.amount })
+            .prefix(5)
+            .map { $0 }
+
+        let topSum = topCategories.reduce(0) { $0 + $1.amount }
+        let otherAmount = max(0, recentSum - topSum)
+        let donutData: [CategoryAmountRow] = {
+            var rows = topCategories
+            if otherAmount > 0 {
+                rows.append(CategoryAmountRow(category: "その他", amount: otherAmount))
+            }
+            return rows
+        }()
+
+        let allCategories = Set(recentTotals.keys).union(previousTotals.keys)
+        let trends: [CategoryTrendRow] = allCategories
+            .map { cat in
+                CategoryTrendRow(
+                    category: cat,
+                    recentAmount: recentTotals[cat, default: 0],
+                    previousAmount: previousTotals[cat, default: 0]
+                )
+            }
+
+        let increasing: [CategoryTrendRow] = trends
+            .filter { $0.delta > 0 }
+            .sorted(by: { $0.delta > $1.delta })
+            .prefix(3)
+            .map { $0 }
+
+        return GroupBox {
+            if topCategories.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 34))
+                        .foregroundStyle(.secondary)
+                    Text("支出傾向を表示するデータがありません")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                    Text("支出を追加すると、カテゴリ別の傾向が表示されます")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 200)
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .firstTextBaseline) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("直近\(windowMonths)ヶ月のカテゴリ別支出")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+
+                            Text(monthRangeLabel(for: recentMonths))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("合計 \(formatAmountJPY(recentSum))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("月平均 \(formatAmountJPY(recentAvg))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Chart(donutData) { item in
+                        SectorMark(
+                            angle: .value("支出", item.amount),
+                            innerRadius: .ratio(0.62),
+                            angularInset: 1.0
+                        )
+                        .cornerRadius(3)
+                        .foregroundStyle(by: .value("カテゴリ", item.category))
+                    }
+                    .frame(height: 220)
+                    .chartLegend(position: .bottom, alignment: .leading, spacing: 8)
+
+                    if !increasing.isEmpty {
+                        Divider()
+
+                        Text("増加傾向（前\(windowMonths)ヶ月比）")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(increasing) { row in
+                                HStack(spacing: 10) {
+                                    Image(systemName: "arrow.up.right")
+                                        .foregroundStyle(.secondary)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(row.category)
+                                            .font(.subheadline)
+
+                                        HStack(spacing: 8) {
+                                            Text("+\(formatAmountJPY(row.delta))")
+                                                .font(.caption)
+                                                .monospacedDigit()
+                                                .foregroundStyle(.secondary)
+
+                                            if let p = row.percentChange {
+                                                Text("(\((p * 100).formatted(.number.precision(.fractionLength(0)))))%")
+                                                    .font(.caption)
+                                                    .monospacedDigit()
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(minLength: 0)
+
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text("直近: \(formatAmountJPY(row.recentAmount))")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                        Text("前回: \(formatAmountJPY(row.previousAmount))")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack {
+                Image(systemName: "chart.bar")
+                Text("支出の傾向")
+                    .font(.headline)
+                Spacer()
+            }
+        }
+    }
+}
+
 // MARK: - Navigation to other analysis sections
 private extension AnalysisView {
     var navigationLinksSection: some View {
@@ -485,7 +688,7 @@ private extension AnalysisView {
                 HStack {
                     Image(systemName: "chart.pie.fill")
                         .foregroundStyle(.blue)
-                    Text("カテゴリ別集計")
+                    Text("月別カテゴリ集計")
                     Spacer()
                     Image(systemName: "chevron.right").foregroundStyle(.secondary)
                 }
@@ -500,7 +703,7 @@ private extension AnalysisView {
                 HStack {
                     Image(systemName: "list.bullet.rectangle.fill")
                         .foregroundStyle(.green)
-                    Text("全ての支出履歴")
+                    Text("全ての支出履歴を見る")
                     Spacer()
                     Image(systemName: "chevron.right").foregroundStyle(.secondary)
                 }
@@ -602,6 +805,69 @@ private extension AnalysisView {
         f.locale = Locale.current
         f.dateFormat = "yyyy/MM"
         return f.string(from: date)
+    }
+    
+    func monthRangeLabel(for months: [Date]) -> String {
+        guard let minM = months.map(startOfMonth).min(),
+              let maxM = months.map(startOfMonth).max() else {
+            return ""
+        }
+        return "\(formatMonthLabel(minM)) 〜 \(formatMonthLabel(maxM))"
+    }
+
+    // Try to extract a category name from the expense model without depending on a specific property name.
+    // This keeps the view compiling even if the model differs slightly.
+    func categoryName<T>(of item: T) -> String {
+        // Common property names (Expense in this app uses `categoryId`)
+        let candidateKeys = [
+            "category",
+            "categoryName",
+            "categoryTitle",
+            "genre",
+            "group",
+            "categoryId",
+            "categoryID"
+        ]
+
+        func unwrapOptional(_ value: Any) -> Any? {
+            let m = Mirror(reflecting: value)
+            guard m.displayStyle == .optional else { return value }
+            return m.children.first?.value
+        }
+
+        let mirror = Mirror(reflecting: item)
+
+        for key in candidateKeys {
+            guard let raw = mirror.children.first(where: { $0.label == key })?.value else { continue }
+            guard let v = unwrapOptional(raw) else { continue }
+
+            // If this is a category id, map it to category name via the ViewModel.
+            if key == "categoryId" || key == "categoryID" {
+                if let id = v as? Int {
+                    return viewModel.categories.first(where: { $0.id == id })?.name ?? "未分類"
+                }
+                if let id64 = v as? Int64 {
+                    let id = Int(id64)
+                    return viewModel.categories.first(where: { $0.id == id })?.name ?? "未分類"
+                }
+            }
+
+            // String
+            if let s = v as? String, !s.isEmpty { return s }
+
+            // Enum / struct with `rawValue`
+            let mv = Mirror(reflecting: v)
+            if let rawValue = mv.children.first(where: { $0.label == "rawValue" })?.value as? String,
+               !rawValue.isEmpty {
+                return rawValue
+            }
+
+            // Fallback to description
+            let desc = String(describing: v)
+            if !desc.isEmpty { return desc }
+        }
+
+        return "未分類"
     }
 
     func formatAmountJPY(_ value: Double) -> String {

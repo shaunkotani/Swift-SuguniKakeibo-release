@@ -72,7 +72,7 @@ struct ContentView: View {
             ),
 
             memoView: AnyView(
-                MemoPlaceholderView()
+                MemoView()
             ),
 
             calculatorView: AnyView(
