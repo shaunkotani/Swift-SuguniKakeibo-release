@@ -396,9 +396,18 @@ struct MemoView: View {
                                     name: list.name,
                                     isSelected: list.id == effectiveListId,
                                     onSelect: {
-                                        selectedListId = list.id
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                        dismissKeyboard()
+                                        if list.id == effectiveListId {
+                                            // 選択中のタブをタップ → 名前編集
+                                            quickEditingListId = list.id
+                                            quickEditingListName = list.name
+                                            showQuickEditListAlert = true
+                                            dismissKeyboard()
+                                        } else {
+                                            // 未選択のタブをタップ → 選択
+                                            selectedListId = list.id
+                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                            dismissKeyboard()
+                                        }
                                     },
                                     onRename: {
                                         quickEditingListId = list.id
@@ -432,8 +441,6 @@ struct MemoView: View {
                             .foregroundColor(.secondary)
                             .font(.footnote)
                         Spacer()
-                        Toggle("完了を隠す", isOn: $hideCompleted)
-                            .labelsHidden()
                     }
 
                     Divider().opacity(0.35)
@@ -521,13 +528,15 @@ struct MemoView: View {
                 HStack {
                     Text("ToDo")
                     Spacer()
-                    Button {
-                        showManageListsSheet = true
-                        dismissKeyboard()
-                    } label: {
-                        Image(systemName: "slider.horizontal.3")
+                    HStack(spacing: 6) {
+                        Text("完了済みを隠す")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                        Toggle("完了済みを隠す", isOn: $hideCompleted)
+                            .labelsHidden()
                     }
-                    .accessibilityLabel("ToDoリストを管理")
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("完了済みのToDoを隠す")
                 }
             }
 
