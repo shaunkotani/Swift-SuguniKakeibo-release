@@ -24,7 +24,7 @@ enum AppTab: Int, CaseIterable {
         case .calendar: return "カレンダー"
         case .analysis: return "分析"
         case .input: return "入力"
-        case .memo: return "メモ"
+        case .memo: return "ToDo"
         case .savings: return "貯金"
         }
     }
@@ -34,7 +34,7 @@ enum AppTab: Int, CaseIterable {
         case .calendar: return "calendar"
         case .analysis: return "chart.bar"
         case .input: return "plus.circle"
-        case .memo: return "note.text"
+        case .memo: return "checklist"
         case .savings: return "yensign.arrow.trianglehead.counterclockwise.rotate.90"
         }
     }

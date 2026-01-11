@@ -373,21 +373,8 @@ struct MemoView: View {
 
     var body: some View {
         Form {
-            // 自由メモ
-            Section(header: Text("自由メモ")) {
-                ZStack(alignment: .topLeading) {
-                    if store.freeMemo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text("例）今月の目標、固定費の見直し、やることメモ…")
-                            .foregroundColor(.secondary)
-                            .padding(.top, 8)
-                            .padding(.leading, 5)
-                    }
-                    TextEditor(text: $store.freeMemo)
-                        .frame(minHeight: 160)
-                        .focused($focusedField, equals: .memo)
-                }
-            }
-
+            
+            
             // ToDo（タブ + 一覧を1つのカードにまとめる）
             Section {
                 // タブ＋サマリー（この行だけセパレータ無し）
@@ -423,7 +410,7 @@ struct MemoView: View {
                                     }
                                 )
                             }
-
+                            
                             Button {
                                 showManageListsSheet = true
                                 dismissKeyboard()
@@ -438,19 +425,19 @@ struct MemoView: View {
                         }
                         .padding(.vertical, 4)
                     }
-
+                    
                     HStack {
                         Text(todoSummaryText)
                             .foregroundColor(.secondary)
                             .font(.footnote)
                         Spacer()
                     }
-
+                    
                     Divider().opacity(0.35)
                 }
                 .padding(.vertical, 4)
                 .listRowSeparator(.hidden)
-
+                
                 // リスト名（カード内の小見出し）
                 HStack {
                     Text(effectiveListName)
@@ -458,7 +445,7 @@ struct MemoView: View {
                     Spacer()
                 }
                 .listRowSeparator(.hidden)
-
+                
                 // ToDo項目（各行にスワイプを効かせる）
                 if activeItems.isEmpty && (hideCompleted || doneItems.isEmpty) {
                     if todoSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -487,7 +474,7 @@ struct MemoView: View {
                             onDelete: { store.deleteTodo(item.id) }
                         )
                     }
-
+                    
                     if !hideCompleted {
                         ForEach(doneItems) { item in
                             MemoTodoRow(
@@ -509,7 +496,7 @@ struct MemoView: View {
                         }
                     }
                 }
-
+                
                 // カード内の右下に「追加」ボタン
                 HStack {
                     Spacer()
@@ -542,8 +529,22 @@ struct MemoView: View {
                     .accessibilityLabel("完了済みのToDoを隠す")
                 }
             }
-
-
+            
+            
+            // 自由メモ
+            Section(header: Text("自由メモ")) {
+                ZStack(alignment: .topLeading) {
+                    if store.freeMemo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("例）今月の目標、固定費の見直し、やることメモ…")
+                            .foregroundColor(.secondary)
+                            .padding(.top, 8)
+                            .padding(.leading, 5)
+                    }
+                    TextEditor(text: $store.freeMemo)
+                        .frame(minHeight: 160)
+                        .focused($focusedField, equals: .memo)
+                }
+            }
         }
         .onAppear {
             if selectedListId == nil {
