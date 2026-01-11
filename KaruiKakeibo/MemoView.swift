@@ -264,7 +264,11 @@ final class MemoStoreModel: ObservableObject {
 
 // MARK: - View
 struct MemoView: View {
-    @StateObject private var store = MemoStoreModel()
+    @ObservedObject var store: MemoStoreModel
+
+    init(store: MemoStoreModel = MemoStoreModel()) {
+        self.store = store
+    }
 
     // ToDoリスト選択
     @State private var selectedListId: UUID? = nil
@@ -299,7 +303,6 @@ struct MemoView: View {
 
     private enum Field: Hashable {
         case memo
-        case savingsAmount
     }
 
     private func commitEditingIfNeeded() {
@@ -541,23 +544,6 @@ struct MemoView: View {
             }
 
 
-            // 毎月の貯金チェック（ToDoとは独立）
-            Section(header: Text("貯金チェック（今月）")) {
-                HStack {
-                    Text("目標")
-                    Spacer()
-                    TextField("30000", value: $store.savingsTargetAmount, format: .number)
-                        .keyboardType(.numberPad)
-                        .multilineTextAlignment(.trailing)
-                        .focused($focusedField, equals: .savingsAmount)
-                    Text("円")
-                        .foregroundColor(.secondary)
-                }
-
-                Toggle(isOn: $store.savingsCheckedThisMonth) {
-                    Text("今月、貯金できた")
-                }
-            }
         }
         .onAppear {
             if selectedListId == nil {

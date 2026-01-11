@@ -17,7 +17,7 @@ enum AppTab: Int, CaseIterable {
     case analysis = 1
     case input = 2
     case memo = 3
-    case calculator = 4
+    case savings = 4
 
     var title: String {
         switch self {
@@ -25,7 +25,7 @@ enum AppTab: Int, CaseIterable {
         case .analysis: return "分析"
         case .input: return "入力"
         case .memo: return "メモ"
-        case .calculator: return "電卓"
+        case .savings: return "貯金"
         }
     }
 
@@ -35,14 +35,15 @@ enum AppTab: Int, CaseIterable {
         case .analysis: return "chart.bar"
         case .input: return "plus.circle"
         case .memo: return "note.text"
-        case .calculator: return "x.squareroot"
+        case .savings: return "yensign.arrow.trianglehead.counterclockwise.rotate.90"
         }
     }
 }
 
 struct ContentView: View {
     @StateObject private var viewModel = ExpenseViewModel()
-
+    @StateObject private var memoStore = MemoStoreModel()
+    
     @State private var selectedTab: Int = AppTab.input.rawValue
     @State private var shouldFocusAmount: Bool = false
 
@@ -72,11 +73,11 @@ struct ContentView: View {
             ),
 
             memoView: AnyView(
-                MemoView()
+                MemoView(store: memoStore)
             ),
 
             calculatorView: AnyView(
-                CalculatorPlaceholderView()
+                SavingsView(store: memoStore)
             )
         )
         .edgesIgnoringSafeArea(.all)
@@ -144,9 +145,9 @@ struct TabBarControllerRepresentable: UIViewControllerRepresentable {
 
         let calculatorVC = UIHostingController(rootView: calculatorView)
         calculatorVC.tabBarItem = UITabBarItem(
-            title: AppTab.calculator.title,
-            image: UIImage(systemName: AppTab.calculator.systemImage),
-            tag: AppTab.calculator.rawValue
+            title: AppTab.savings.title,
+            image: UIImage(systemName: AppTab.savings.systemImage),
+            tag: AppTab.savings.rawValue
         )
 
         tabBarController.viewControllers = [

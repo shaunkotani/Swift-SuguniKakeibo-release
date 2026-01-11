@@ -599,20 +599,39 @@ struct CategorySummaryView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
-                    Task {
-                        await refreshData()
+                    let currentIndex = currentMonthIndex()
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+                    if selectedMonthIndex == currentIndex {
+                        // 同じ月にいる場合でもトップに戻したい
+                        scrollOffset = 0
+                        NotificationCenter.default.post(name: .init("ScrollViewCategorySummaryToTop"), object: nil)
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            selectedMonthIndex = currentIndex
+                        }
                     }
                 }) {
-                    Image(systemName: "arrow.clockwise")
-                        .foregroundColor(.blue)
+                    Text("今月")
                 }
-                .disabled(isRefreshing)
             }
         }
         .navigationTitle("月別カテゴリ集計")
         .navigationBarTitleDisplayMode(.automatic)
     }
     
+    // 今月のindexを返す（months配列から当月を探す）
+    private func currentMonthIndex() -> Int {
+        let calendar = Calendar.current
+        let today = Date()
+        // months は月単位の配列なので、月単位で一致するindexを探す
+        if let idx = months.firstIndex(where: { calendar.isDate($0, equalTo: today, toGranularity: .month) }) {
+            return idx
+        }
+        // 見つからない場合は従来の「現在月=24」をフォールバック
+        return min(24, months.count - 1)
+    }
+
     // --- 月ごとのカテゴリ集計取得関数 ---
     private func getCategoryTotals(for month: Date) -> [(category: String, categoryId: Int, total: Double)] {
         let calendar = Calendar.current
