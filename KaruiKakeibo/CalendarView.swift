@@ -81,6 +81,27 @@ struct CalendarView: View {
             calendar.date(byAdding: .month, value: offset, to: today)
         }
     }()
+    
+    private func scrollToToday() {
+        let calendar = Calendar.current
+        let today = Date()
+        
+        let targetIndex = months.firstIndex(where: {
+            calendar.isDate($0, equalTo: today, toGranularity: .month)
+        }) ?? 24
+        
+        if targetIndex == selectedMonthIndex {
+            clearCache()
+            calculateDailyTotalsSync()
+        } else {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                selectedMonthIndex = targetIndex
+            }
+        }
+        
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        print("今月の戻る: \(monthFormatter.string(from: months[targetIndex]))")
+    }
 
     var body: some View {
         NavigationStack {
@@ -131,6 +152,15 @@ struct CalendarView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: {
+                        scrollToToday()
+                    }) {
+                        Text("今月")
+                    }
+                    .accessibilityLabel("今月")
+                    .accessibilityHint("今月に移動します")
+                    .disabled(showingDetailSheet)
+                    
                     Menu {
                         Button(action: {
                             useCumulativeMode = false
@@ -165,8 +195,11 @@ struct CalendarView: View {
     private func makeMonthPage(for month: Date, at index: Int) -> some View {
         VStack(spacing: 0) {
             MonthSelectorViewPage(
-                selectedMonth: month,
-                monthString: monthFormatter.string(from: month)
+                selectedMonthIndex: $selectedMonthIndex,
+                currentIndex: index,
+                maxIndex: months.count - 1,
+                monthString: monthFormatter.string(from: month),
+                isDisabled: showingDetailSheet
             )
             .padding(.horizontal)
             .padding(.bottom, 8)
@@ -463,18 +496,59 @@ struct CalendarView: View {
 }
 
 // MARK: - 月選択ビュー（TabView併用版）
-// 左右の矢印ボタンを削除し、表示のみとしたビュー
 struct MonthSelectorViewPage: View {
-    let selectedMonth: Date
+    @Binding var selectedMonthIndex: Int
+    let currentIndex: Int
+    let maxIndex: Int
     let monthString: String
+    let isDisabled: Bool
+
+    private var canGoPrev: Bool { currentIndex > 0 }
+    private var canGoNext: Bool { currentIndex < maxIndex }
 
     var body: some View {
-        HStack {
+        HStack(spacing: 0) {
+            Button(action: {
+                guard canGoPrev else { return }
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    selectedMonthIndex = currentIndex - 1
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }) {
+                Image(systemName: "chevron.left")
+                    .font(.headline)
+                    .frame(width: 44, height: 36)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(isDisabled || !canGoPrev)
+            .accessibilityLabel("前の月")
+            .accessibilityHint("前の月へ移動します")
+
             Spacer()
+
             Text(monthString)
                 .font(.title2)
                 .fontWeight(.semibold)
+
             Spacer()
+
+            Button(action: {
+                guard canGoNext else { return }
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    selectedMonthIndex = currentIndex + 1
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }) {
+                Image(systemName: "chevron.right")
+                    .font(.headline)
+                    .frame(width: 44, height: 36)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(isDisabled || !canGoNext)
+            .accessibilityLabel("次の月")
+            .accessibilityHint("次の月へ移動します")
         }
         .padding(.vertical, 8)
         .background {
@@ -670,7 +744,7 @@ struct CalendarDayView: View {
     }
 
     private var baseBackground: Color {
-        if isToday { return .orange }
+        // 今日でもセル全体は塗りつぶさない
         return Color(.systemGray6)
     }
 
@@ -681,11 +755,19 @@ struct CalendarDayView: View {
                     .font(.headline)
                     .fontWeight(isToday ? .bold : .medium)
                     .foregroundColor(isToday ? .white : .primary)
+                    .frame(width: 26, height: 26)
+                    .background {
+                        if isToday {
+                            Circle().fill(Color.red)
+                        } else {
+                            Color.clear
+                        }
+                    }
 
                 Text(netText)
                     .font(.caption2)
                     .fontWeight(.medium)
-                    .foregroundColor(isToday ? .white : .secondary)
+                    .foregroundColor(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
@@ -754,10 +836,10 @@ private struct CalendarPlusMinusBarBackground: View {
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isToday ? Color.orange.opacity(0.85) : Color.clear, lineWidth: isToday ? 2 : 1)
-            )
+//            .overlay(
+//                RoundedRectangle(cornerRadius: 8)
+//                    .stroke(isToday ? Color.red.opacity(0.9) : Color.clear, lineWidth: isToday ? 2 : 1)
+//            )
         }
     }
 }
@@ -783,7 +865,7 @@ private struct CalendarCumulativeBarBackground: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(isToday ? Color.orange.opacity(0.85) : Color.clear, lineWidth: isToday ? 2 : 1)
+                    .stroke(isToday ? Color.red.opacity(0.9) : Color.clear, lineWidth: isToday ? 2 : 1)
             )
         }
     }
@@ -799,7 +881,7 @@ private struct CalendarDataBarBackground: View {
     let isMaxExpenseDay: Bool
 
     private var strokeColor: Color {
-        if isToday { return Color.orange.opacity(0.85) }
+        if isToday { return Color.red.opacity(0.9) }
         if isMaxExpenseDay { return Color.red.opacity(0.85) }
         if showBar { return Color.blue.opacity(0.35) }
         return Color.clear
@@ -910,7 +992,7 @@ struct MonthSummaryHeaderView: View {
         VStack(spacing: 12) {
             // 月と合計金額
             VStack(spacing: 4) {
-                Text("\(monthFormatter.string(from: selectedMonth))の合計")
+                Text("収支の合計")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
 

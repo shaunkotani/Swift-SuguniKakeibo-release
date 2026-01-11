@@ -40,7 +40,7 @@ struct InputView: View {
             if showSuccessMessage {
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
+                        .foregroundColor(.white)
                     Text(transactionType == .expense ? "支出を保存しました" : "収入を保存しました")
                         .foregroundColor(.white)
                 }
@@ -54,6 +54,23 @@ struct InputView: View {
             Spacer()
         }
         .allowsHitTesting(false)
+    }
+
+    // MARK: - ツールバー用 保存ボタン（下部の「支出を保存」と同等）
+    @ViewBuilder
+    private var saveToolbarLabel: some View {
+        if isProcessing {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .scaleEffect(0.9)
+                Text("保存中...")
+            }
+        } else {
+            HStack(spacing: 6) {
+//                Image(systemName: "checkmark")
+                Text(transactionType == .expense ? "支出を保存" : "収入を保存")
+            }
+        }
     }
 
     var body: some View {
@@ -236,12 +253,24 @@ struct InputView: View {
             .scrollDismissesKeyboard(.immediately)
             .navigationTitle(transactionType == .expense ? "支出入力" : "収入入力")
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                // 左上：クリア
+                ToolbarItem(placement: .topBarLeading) {
                     Button("クリア") {
                         showingClearConfirm = true
                     }
                     .foregroundColor(.orange)
                     .disabled(isProcessing)
+                }
+
+                // 右上：保存アクション
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(action: {
+                        guard isButtonEnabled && !isProcessing else { return }
+                        saveExpense()
+                    }) {
+                        saveToolbarLabel
+                    }
+                    .disabled(!isButtonEnabled || isProcessing)
                 }
             }
             .onSubmit {
@@ -253,6 +282,7 @@ struct InputView: View {
             .safeAreaInset(edge: .bottom) {
                 if showFloatingButton {
                     FloatingActionButton(
+                        transactionType: transactionType,
                         isButtonEnabled: isButtonEnabled,
                         isProcessing: isProcessing,
                         action: saveExpense
@@ -693,30 +723,31 @@ struct InputView: View {
 // MARK: - フロートアクションボタン
 
 struct FloatingActionButton: View {
+    let transactionType: TransactionType
     let isButtonEnabled: Bool
     let isProcessing: Bool
     let action: () -> Void
-    
+
     @AppStorage("autoFocusAfterSave") private var autoFocusAfterSave = true
-    
+
     var buttonColor: Color {
         if isProcessing { return .orange }
         if isButtonEnabled { return .blue }
         return .gray
     }
-    
+
     var buttonText: String {
         if isProcessing { return "保存中..." }
-        return "支出を保存"
+        return transactionType == .expense ? "支出を保存" : "収入を保存"
     }
-    
+
     var body: some View {
         VStack(spacing: 8) {
             Button(action: {
                 let impactFeedback = UIImpactFeedbackGenerator(style: .light)
                 impactFeedback.prepare()
                 impactFeedback.impactOccurred()
-                
+
                 action()
             }) {
                 HStack(spacing: 12) {
